@@ -14,6 +14,7 @@ class DataGapAnalyzer {
       includeContacts: options.includeContacts !== false,
       includeCompanies: options.includeCompanies !== false,
       includeDeals: options.includeDeals !== false,
+      focusOnDeals: options.focusOnDeals || false,
       ...options
     };
     
@@ -49,7 +50,13 @@ class DataGapAnalyzer {
         emptyFields: []
       },
       deals: {
-        emptyFields: []
+        emptyFields: [],
+        missingInHubSpot: [],
+        missingInActiveCampaign: [],
+        statusMismatches: [],
+        dateMismatches: [],
+        valueMismatches: [],
+        migrationIssues: []
       }
     };
   }
@@ -356,6 +363,14 @@ class DataGapAnalyzer {
           missingInActiveCampaign: this.gaps.contacts.missingInActiveCampaign.length,
           fieldMismatches: this.gaps.contacts.fieldMismatches.length
         },
+        dealGaps: {
+          missingInHubSpot: this.gaps.deals.missingInHubSpot.length,
+          missingInActiveCampaign: this.gaps.deals.missingInActiveCampaign.length,
+          statusMismatches: this.gaps.deals.statusMismatches.length,
+          dateMismatches: this.gaps.deals.dateMismatches.length,
+          valueMismatches: this.gaps.deals.valueMismatches.length,
+          migrationIssues: this.gaps.deals.migrationIssues.length
+        },
         analyzedAt: new Date().toISOString()
       },
       gaps: this.gaps,
@@ -457,7 +472,53 @@ class DataGapAnalyzer {
         action: 'Consider upgrading to access deal pipeline management'
       });
     }
+
+    // Deal gap recommendations
+    if (this.gaps.deals.missingInHubSpot.length > 0) {
+      recommendations.push({
+        type: 'missing_deals_in_hubspot',
+        priority: 'high',
+        message: `${this.gaps.deals.missingInHubSpot.length} deals exist in ActiveCampaign but not in HubSpot`,
+        action: 'Review and import missing deals from ActiveCampaign to HubSpot'
+      });
+    }
     
+    if (this.gaps.deals.statusMismatches.length > 0) {
+      recommendations.push({
+        type: 'deal_status_mismatches',
+        priority: 'high',
+        message: `${this.gaps.deals.statusMismatches.length} deals have different status between platforms`,
+        action: 'Review deal statuses and update HubSpot to match ActiveCampaign or vice versa'
+      });
+    }
+    
+    if (this.gaps.deals.dateMismatches.length > 0) {
+      recommendations.push({
+        type: 'deal_date_mismatches',
+        priority: 'medium',
+        message: `${this.gaps.deals.dateMismatches.length} deals have different close dates between platforms`,
+        action: 'Review and sync close dates between platforms'
+      });
+    }
+    
+    if (this.gaps.deals.valueMismatches.length > 0) {
+      recommendations.push({
+        type: 'deal_value_mismatches',
+        priority: 'high',
+        message: `${this.gaps.deals.valueMismatches.length} deals have different amounts between platforms`,
+        action: 'Review and sync deal amounts between platforms'
+      });
+    }
+    
+    if (this.gaps.deals.migrationIssues.length > 0) {
+      recommendations.push({
+        type: 'migration_issues',
+        priority: 'high',
+        message: `${this.gaps.deals.migrationIssues.length} deals have potential migration data inconsistencies`,
+        action: 'Review and fix migration issues such as missing close dates on closed deals'
+      });
+    }
+
     return recommendations;
   }
 
@@ -478,6 +539,14 @@ CONTACT GAPS:
 - Missing in HubSpot: ${report.summary.contactGaps.missingInHubSpot}
 - Missing in ActiveCampaign: ${report.summary.contactGaps.missingInActiveCampaign}
 - Field Mismatches: ${report.summary.contactGaps.fieldMismatches}
+
+DEAL GAPS:
+- Missing in HubSpot: ${report.summary.dealGaps.missingInHubSpot}
+- Missing in ActiveCampaign: ${report.summary.dealGaps.missingInActiveCampaign}
+- Status Mismatches: ${report.summary.dealGaps.statusMismatches}
+- Date Mismatches: ${report.summary.dealGaps.dateMismatches}
+- Value Mismatches: ${report.summary.dealGaps.valueMismatches}
+- Migration Issues: ${report.summary.dealGaps.migrationIssues}
 
 CONTACT EMPTY FIELD ANALYSIS:
 ${this.gaps.contacts.emptyFields.map(field => 
@@ -518,6 +587,269 @@ Full details saved to: reports/data-gap-analysis.json
     fs.writeFileSync(summaryPath, summary);
     console.log(summary);
     logger.info(`Gap analysis summary saved to ${summaryPath}`);
+  }
+
+  async analyzeData() {
+    logger.info('Starting comprehensive data analysis...');
+    
+    // If focusing on deals, skip contact analysis
+    if (this.options.focusDeals) {
+      logger.info('🎯 Focusing on deals analysis only...');
+      // Only analyze deals comprehensively
+      if (this.options.includeDeals) {
+        await this.analyzeDealsComprehensively();
+      }
+      
+      // Only analyze deal empty fields
+      if (this.hubspotDeals.length > 0) {
+        this.analyzeDealEmptyFields();
+      }
+    } else {
+      // Full analysis
+      // Contact analysis
+      if (this.options.includeContacts) {
+        this.analyzeContactGaps();
+      }
+      
+      // Deal analysis (enhanced for migration focus)
+      if (this.options.includeDeals) {
+        await this.analyzeDealsComprehensively();
+      }
+      
+      // Empty field analysis
+      this.analyzeEmptyFields();
+    }
+    
+    logger.info('Data analysis complete');
+  }
+
+  async analyzeDealsComprehensively() {
+    logger.info('🔍 Analyzing deals comprehensively between platforms...');
+    
+    // Create lookup maps for deal comparison
+    const hubspotDealsByName = new Map();
+    const acDealsByTitle = new Map();
+    
+    // Process HubSpot deals
+    this.hubspotDeals.forEach(deal => {
+      const name = deal.properties.dealname?.toLowerCase().trim();
+      if (name) {
+        if (!hubspotDealsByName.has(name)) {
+          hubspotDealsByName.set(name, []);
+        }
+        hubspotDealsByName.get(name).push(deal);
+      }
+    });
+    
+    // Process ActiveCampaign deals
+    this.acDeals.forEach(deal => {
+      const title = deal.title?.toLowerCase().trim();
+      if (title) {
+        if (!acDealsByTitle.has(title)) {
+          acDealsByTitle.set(title, []);
+        }
+        acDealsByTitle.get(title).push(deal);
+      }
+    });
+    
+    // Find missing deals
+    this.findMissingDeals(hubspotDealsByName, acDealsByTitle);
+    
+    // Analyze deal mismatches
+    this.analyzeDealMismatches(hubspotDealsByName, acDealsByTitle);
+    
+    // Analyze migration issues
+    this.analyzeMigrationIssues();
+    
+    logger.info(`✅ Deal analysis complete: ${this.acDeals.length} AC deals vs ${this.hubspotDeals.length} HubSpot deals`);
+  }
+
+  findMissingDeals(hubspotDealsByName, acDealsByTitle) {
+    logger.info('🔍 Finding missing deals between platforms...');
+    
+    // Find deals in ActiveCampaign but not in HubSpot
+    for (const [title, acDeals] of acDealsByTitle) {
+      if (!hubspotDealsByName.has(title)) {
+        // Deal exists in AC but not in HubSpot
+        acDeals.forEach(deal => {
+          this.gaps.deals.missingInHubSpot.push({
+            id: deal.id,
+            title: deal.title,
+            value: deal.value,
+            status: this.getACDealStatus(deal.status),
+            stage: deal.stage,
+            createdDate: deal.cdate,
+            modifiedDate: deal.mdate,
+            closeDate: deal.edate,
+            organization: deal.organization,
+            owner: deal.owner,
+            migrationConcern: 'Deal exists in ActiveCampaign but not found in HubSpot'
+          });
+        });
+      }
+    }
+    
+    // Find deals in HubSpot but not in ActiveCampaign
+    for (const [name, hubspotDeals] of hubspotDealsByName) {
+      if (!acDealsByTitle.has(name)) {
+        // Deal exists in HubSpot but not in AC
+        hubspotDeals.forEach(deal => {
+          this.gaps.deals.missingInActiveCampaign.push({
+            id: deal.id,
+            name: deal.properties.dealname,
+            amount: deal.properties.amount,
+            stage: deal.properties.dealstage,
+            closeDate: deal.properties.closedate,
+            createDate: deal.properties.createdate,
+            pipeline: deal.properties.pipeline,
+            migrationConcern: 'Deal exists in HubSpot but not found in ActiveCampaign'
+          });
+        });
+      }
+    }
+    
+    logger.info(`Found ${this.gaps.deals.missingInHubSpot.length} deals in AC but not in HubSpot`);
+    logger.info(`Found ${this.gaps.deals.missingInActiveCampaign.length} deals in HubSpot but not in AC`);
+  }
+
+  analyzeDealMismatches(hubspotDealsByName, acDealsByTitle) {
+    logger.info('🔍 Analyzing deal field mismatches...');
+    
+    for (const [name, hubspotDeals] of hubspotDealsByName) {
+      const acDeals = acDealsByTitle.get(name);
+      if (acDeals) {
+        // We have matching deals, let's compare them
+        hubspotDeals.forEach(hsDeal => {
+          acDeals.forEach(acDeal => {
+            this.compareDealFields(hsDeal, acDeal);
+          });
+        });
+      }
+    }
+    
+    logger.info(`Found ${this.gaps.deals.statusMismatches.length} status mismatches`);
+    logger.info(`Found ${this.gaps.deals.dateMismatches.length} date mismatches`);
+    logger.info(`Found ${this.gaps.deals.valueMismatches.length} value mismatches`);
+  }
+
+  compareDealFields(hsDeal, acDeal) {
+    const comparison = {
+      hubspotId: hsDeal.id,
+      activeCampaignId: acDeal.id,
+      dealName: hsDeal.properties.dealname,
+      mismatches: []
+    };
+    
+    // Compare status/stage
+    const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
+    const acStatus = this.getACDealStatus(acDeal.status);
+    
+    if (hsStatus !== acStatus) {
+      this.gaps.deals.statusMismatches.push({
+        ...comparison,
+        hubspotStatus: hsStatus,
+        activeCampaignStatus: acStatus,
+        hubspotStage: hsDeal.properties.dealstage,
+        activeCampaignStage: acDeal.stage,
+        concern: 'Deal status differs between platforms'
+      });
+    }
+    
+    // Compare values
+    const hsAmount = parseFloat(hsDeal.properties.amount || '0');
+    const acAmount = parseFloat(acDeal.value || '0') / 100; // AC stores in cents
+    
+    if (Math.abs(hsAmount - acAmount) > 0.01) {
+      this.gaps.deals.valueMismatches.push({
+        ...comparison,
+        hubspotAmount: hsAmount,
+        activeCampaignAmount: acAmount,
+        difference: hsAmount - acAmount,
+        concern: 'Deal amount differs between platforms'
+      });
+    }
+    
+    // Compare dates
+    const hsCloseDate = hsDeal.properties.closedate;
+    const acCloseDate = acDeal.edate;
+    
+    if (hsCloseDate && acCloseDate) {
+      const hsDate = new Date(hsCloseDate);
+      const acDate = new Date(acCloseDate);
+      
+      // Check if dates differ by more than 1 day
+      if (Math.abs(hsDate.getTime() - acDate.getTime()) > 86400000) {
+        this.gaps.deals.dateMismatches.push({
+          ...comparison,
+          hubspotCloseDate: hsCloseDate,
+          activeCampaignCloseDate: acCloseDate,
+          daysDifference: Math.round((hsDate.getTime() - acDate.getTime()) / 86400000),
+          concern: 'Deal close dates differ between platforms'
+        });
+      }
+    }
+  }
+
+  analyzeMigrationIssues() {
+    logger.info('🔍 Analyzing potential migration issues...');
+    
+    // Check for deals with problematic statuses
+    this.hubspotDeals.forEach(deal => {
+      const issues = [];
+      
+      // Check for missing close dates on closed deals
+      if ((deal.properties.dealstage === 'closedwon' || deal.properties.dealstage === 'closedlost') && 
+          !deal.properties.closedate) {
+        issues.push('Closed deal missing close date');
+      }
+      
+      // Check for missing amounts on won deals
+      if (deal.properties.dealstage === 'closedwon' && 
+          (!deal.properties.amount || parseFloat(deal.properties.amount) === 0)) {
+        issues.push('Won deal missing or zero amount');
+      }
+      
+      // Check for inconsistent stage naming
+      if (deal.properties.dealstage && !['closedwon', 'closedlost'].includes(deal.properties.dealstage)) {
+        // This might be an open deal, check if it has a close date
+        if (deal.properties.closedate) {
+          issues.push('Open deal has close date - possible migration issue');
+        }
+      }
+      
+      if (issues.length > 0) {
+        this.gaps.deals.migrationIssues.push({
+          hubspotId: deal.id,
+          dealName: deal.properties.dealname,
+          stage: deal.properties.dealstage,
+          amount: deal.properties.amount,
+          closeDate: deal.properties.closedate,
+          issues: issues,
+          concern: 'Potential migration data inconsistency'
+        });
+      }
+    });
+    
+    logger.info(`Found ${this.gaps.deals.migrationIssues.length} potential migration issues`);
+  }
+
+  getHubSpotDealStatus(stage) {
+    if (!stage) return 'unknown';
+    
+    const lowerStage = stage.toLowerCase();
+    if (lowerStage.includes('closedwon') || lowerStage.includes('won')) return 'won';
+    if (lowerStage.includes('closedlost') || lowerStage.includes('lost')) return 'lost';
+    return 'open';
+  }
+
+  getACDealStatus(status) {
+    switch (status) {
+      case '0': return 'open';
+      case '1': return 'won';
+      case '2': return 'lost';
+      case '3': return 'open'; // in progress
+      default: return 'unknown';
+    }
   }
 }
 
@@ -580,10 +912,8 @@ async function runGapAnalysis() {
     await analyzer.getActiveCampaignContacts();
     await analyzer.getActiveCampaignDeals();
     
-    // Analyze gaps
-    analyzer.analyzeContactGaps();
-    analyzer.analyzeFieldMismatches();
-    analyzer.analyzeEmptyFields();
+    // Analyze gaps using new comprehensive method
+    await analyzer.analyzeData();
     
     const report = analyzer.generateGapReport();
     

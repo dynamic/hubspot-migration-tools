@@ -189,6 +189,93 @@ class CSVReporter {
       });
     }
 
+    // Process deal-specific gaps
+    if (gaps.deals) {
+      // Missing deals in HubSpot
+      if (gaps.deals.missingInHubSpot) {
+        gaps.deals.missingInHubSpot.forEach(deal => {
+          csvData.push({
+            gap_type: 'missing_in_hubspot',
+            object_type: 'deal',
+            priority: 'HIGH',
+            identifier: deal.title,
+            details: `Value: $${(deal.value / 100).toFixed(2)}, Status: ${deal.status}, AC ID: ${deal.id}`,
+            action: 'Import deal from ActiveCampaign to HubSpot'
+          });
+        });
+      }
+
+      // Missing deals in ActiveCampaign
+      if (gaps.deals.missingInActiveCampaign) {
+        gaps.deals.missingInActiveCampaign.forEach(deal => {
+          csvData.push({
+            gap_type: 'missing_in_activecampaign',
+            object_type: 'deal',
+            priority: 'LOW',
+            identifier: deal.name,
+            details: `Amount: $${deal.amount}, Stage: ${deal.stage}, HS ID: ${deal.id}`,
+            action: 'Deal exists in HubSpot but not ActiveCampaign'
+          });
+        });
+      }
+
+      // Deal status mismatches
+      if (gaps.deals.statusMismatches) {
+        gaps.deals.statusMismatches.forEach(mismatch => {
+          csvData.push({
+            gap_type: 'status_mismatch',
+            object_type: 'deal',
+            priority: 'HIGH',
+            identifier: mismatch.dealName,
+            details: `HubSpot: ${mismatch.hubspotStatus} vs ActiveCampaign: ${mismatch.activeCampaignStatus}`,
+            action: 'Review and sync deal status between platforms'
+          });
+        });
+      }
+
+      // Deal value mismatches
+      if (gaps.deals.valueMismatches) {
+        gaps.deals.valueMismatches.forEach(mismatch => {
+          csvData.push({
+            gap_type: 'value_mismatch',
+            object_type: 'deal',
+            priority: 'HIGH',
+            identifier: mismatch.dealName,
+            details: `HubSpot: $${mismatch.hubspotAmount} vs ActiveCampaign: $${mismatch.activeCampaignAmount} (diff: $${mismatch.difference})`,
+            action: 'Review and sync deal amounts between platforms'
+          });
+        });
+      }
+
+      // Deal date mismatches
+      if (gaps.deals.dateMismatches) {
+        gaps.deals.dateMismatches.forEach(mismatch => {
+          csvData.push({
+            gap_type: 'date_mismatch',
+            object_type: 'deal',
+            priority: 'MEDIUM',
+            identifier: mismatch.dealName,
+            details: `Close dates differ by ${mismatch.daysDifference} days`,
+            action: 'Review and sync close dates between platforms'
+          });
+        });
+      }
+
+      // Migration issues
+      if (gaps.deals.migrationIssues) {
+        gaps.deals.migrationIssues.forEach(issue => {
+          csvData.push({
+            gap_type: 'migration_issue',
+            object_type: 'deal',
+            priority: 'HIGH',
+            identifier: issue.dealName,
+            details: `Issues: ${issue.issues.join(', ')}`,
+            action: 'Fix migration data inconsistencies'
+          });
+        });
+      }
+    }
+
     // Sort by priority and impact
     const priorityRank = { 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3 };
     csvData.sort((a, b) => {

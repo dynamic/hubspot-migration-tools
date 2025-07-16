@@ -13,6 +13,7 @@ class FlagParser {
       help: false,
       flushCache: false,
       cacheStats: false,
+      focusDeals: false,
       // Additional cache options
       cache: true,
       cacheTtl: 60,
@@ -36,6 +37,9 @@ class FlagParser {
           flags.includeContacts = false;
           flags.includeCompanies = false;
           flags.includeDeals = true;
+          break;
+        case '--focus-deals':
+          flags.focusDeals = true;
           break;
         case '--no-contacts':
           flags.includeContacts = false;
@@ -94,6 +98,7 @@ Options:
   --contacts-only     Analyze only contacts
   --companies-only    Analyze only companies  
   --deals-only        Analyze only deals
+  --focus-deals       Enable comprehensive deals migration analysis
   --no-contacts       Skip contacts analysis
   --no-companies      Skip companies analysis
   --no-deals          Skip deals analysis
@@ -122,7 +127,8 @@ Examples:
     logger.info('Analysis flags:', {
       contacts: flags.includeContacts,
       companies: flags.includeCompanies,
-      deals: flags.includeDeals
+      deals: flags.includeDeals,
+      focusDeals: flags.focusDeals
     });
   }
 }
