@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const HubSpotAPI = require('../utils/hubspot-api');
 const logger = require('../utils/logger');
-const flagParser = require('../utils/flag-parser');
+const FlagParser = require('../utils/flag-parser');
 
 class HubSpotCloseDateUpdater {
   constructor() {
@@ -148,6 +148,7 @@ class HubSpotCloseDateUpdater {
 }
 
 async function main() {
+  const flagParser = new FlagParser();
   const flags = flagParser.parse();
   const dryRun = flags.dryRun || false;
   
