@@ -1,22 +1,37 @@
-const hubspot = require('@hubspot/api-client');
 const axios = require('axios');
+const HubSpotAPI = require('../utils/hubspot-api');
+const ActiveCampaignAPI = require('../utils/activecampaign-api');
+const CSVReporter = require('../utils/csv-reporter');
+const FlagParser = require('../utils/flag-parser');
 const config = require('../config');
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
 
 class DataGapAnalyzer {
-  constructor() {
-    this.hubspotClient = new hubspot.Client({
-      accessToken: config.hubspot.accessToken
+  constructor(options = {}) {
+    this.options = {
+      includeContacts: options.includeContacts !== false,
+      includeCompanies: options.includeCompanies !== false,
+      includeDeals: options.includeDeals !== false,
+      ...options
+    };
+    
+    this.hubspotAPI = new HubSpotAPI({
+      cache: options.cache,
+      flushCache: options.flushCache,
+      cacheTtl: options.cacheTtl,
+      cacheDir: options.cacheDir
     });
     
-    this.acClient = axios.create({
-      baseURL: config.activecampaign.apiUrl,
-      headers: {
-        'Api-Token': config.activecampaign.apiKey
-      }
+    this.activeCampaignAPI = new ActiveCampaignAPI({
+      cache: options.cache,
+      flushCache: options.flushCache,
+      cacheTtl: options.cacheTtl,
+      cacheDir: options.cacheDir
     });
+    
+    this.csvReporter = new CSVReporter();
     
     this.hubspotContacts = [];
     this.hubspotCompanies = [];
@@ -28,195 +43,47 @@ class DataGapAnalyzer {
         missingInHubspot: [],
         missingInActiveCampaign: [],
         fieldMismatches: [],
-        emptyFields: []
+        emptyFields: {}
       },
       companies: {
-        emptyFields: []
+        emptyFields: {}
       },
       deals: {
-        emptyFields: []
+        emptyFields: {}
       }
     };
   }
 
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async getHubSpotContacts() {
-    logger.info('Fetching HubSpot contacts...');
-    let after = undefined;
-    let allContacts = [];
-
-    do {
-      try {
-        const response = await this.hubspotClient.crm.contacts.getAll({
-          properties: [
-            'email', 'firstname', 'lastname', 'phone', 'company',
-            'createdate', 'lastmodifieddate', 'lifecyclestage', 'jobtitle',
-            'website', 'city', 'state', 'country'
-          ],
-          limit: 100,
-          after: after
-        });
-
-        allContacts = allContacts.concat(response.results);
-        after = response.paging?.next?.after;
-        
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } catch (error) {
-        logger.error('Error fetching HubSpot contacts:', error.message);
-        throw error;
-      }
-    } while (after);
-
-    this.hubspotContacts = allContacts;
-    logger.info(`HubSpot contacts fetched: ${allContacts.length}`);
-    return allContacts;
+    if (!this.options.includeContacts) return [];
+    this.hubspotContacts = await this.hubspotAPI.getAllContacts();
+    return this.hubspotContacts;
   }
 
   async getHubSpotCompanies() {
-    logger.info('Fetching HubSpot companies...');
-    let after = undefined;
-    let allCompanies = [];
-
-    try {
-      do {
-        const response = await this.hubspotClient.crm.companies.getAll({
-          properties: [
-            'name', 'domain', 'website', 'phone', 'city', 'state',
-            'createdate', 'lastmodifieddate', 'industry', 'numberofemployees'
-          ],
-          limit: 100,
-          after: after
-        });
-
-        allCompanies = allCompanies.concat(response.results);
-        after = response.paging?.next?.after;
-        
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } while (after);
-    } catch (error) {
-      if (error.message.includes('403') || error.message.includes('402')) {
-        logger.warn('Companies API not available (likely free tier limitation)');
-        return [];
-      }
-      logger.error('Error fetching HubSpot companies:', error.message);
-      throw error;
-    }
-
-    this.hubspotCompanies = allCompanies;
-    logger.info(`HubSpot companies fetched: ${allCompanies.length}`);
-    return allCompanies;
+    if (!this.options.includeCompanies) return [];
+    this.hubspotCompanies = await this.hubspotAPI.getAllCompanies();
+    return this.hubspotCompanies;
   }
 
   async getHubSpotDeals() {
-    logger.info('Fetching HubSpot deals...');
-    let after = undefined;
-    let allDeals = [];
-
-    try {
-      do {
-        const response = await this.hubspotClient.crm.deals.getAll({
-          properties: [
-            'dealname', 'amount', 'dealstage', 'pipeline',
-            'createdate', 'lastmodifieddate', 'closedate', 'dealtype'
-          ],
-          limit: 100,
-          after: after
-        });
-
-        allDeals = allDeals.concat(response.results);
-        after = response.paging?.next?.after;
-        
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } while (after);
-    } catch (error) {
-      if (error.message.includes('403') || error.message.includes('402')) {
-        logger.warn('Deals API not available (likely free tier limitation)');
-        return [];
-      }
-      logger.error('Error fetching HubSpot deals:', error.message);
-      throw error;
-    }
-
-    this.hubspotDeals = allDeals;
-    logger.info(`HubSpot deals fetched: ${allDeals.length}`);
-    return allDeals;
+    if (!this.options.includeDeals) return [];
+    this.hubspotDeals = await this.hubspotAPI.getAllDeals();
+    return this.hubspotDeals;
   }
 
   async getActiveCampaignDeals() {
-    logger.info('Fetching ActiveCampaign deals...');
-    let allDeals = [];
-    let offset = 0;
-    const limit = 100;
-    
-    try {
-      do {
-        const response = await this.acClient.get('/api/3/deals', {
-          params: {
-            limit,
-            offset
-          }
-        });
-        
-        const deals = response.data.deals;
-        allDeals = allDeals.concat(deals);
-        
-        if (deals.length < limit) {
-          break;
-        }
-        
-        offset += limit;
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } while (true);
-      
-    } catch (error) {
-      logger.error('Error fetching ActiveCampaign deals:', error.message);
-      // ActiveCampaign deals might not be available
-      return [];
-    }
-    
-    this.acDeals = allDeals;
-    logger.info(`ActiveCampaign deals fetched: ${allDeals.length}`);
-    return allDeals;
+    this.acDeals = await this.activeCampaignAPI.getAllDeals();
+    return this.acDeals;
   }
 
   async getActiveCampaignContacts() {
-    logger.info('Fetching ActiveCampaign contacts...');
-    let allContacts = [];
-    let offset = 0;
-    const limit = 100;
-    
-    try {
-      do {
-        const response = await this.acClient.get('/api/3/contacts', {
-          params: {
-            limit,
-            offset
-          }
-        });
-        
-        const contacts = response.data.contacts;
-        allContacts = allContacts.concat(contacts);
-        
-        if (contacts.length < limit) {
-          break;
-        }
-        
-        offset += limit;
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } while (true);
-      
-    } catch (error) {
-      logger.error('Error fetching ActiveCampaign contacts:', error.message);
-      throw error;
-    }
-    
-    this.acContacts = allContacts;
-    logger.info(`ActiveCampaign contacts fetched: ${allContacts.length}`);
-    return allContacts;
+    this.acContacts = await this.activeCampaignAPI.getAllContacts();
+    return this.acContacts;
   }
 
   analyzeContactGaps() {
@@ -485,7 +352,7 @@ class DataGapAnalyzer {
         activecampaignContacts: this.acContacts.length,
         activecampaignDeals: this.acDeals.length,
         contactGaps: {
-          missingInHubspot: this.gaps.contacts.missingInHubspot.length,
+          missingInHubSpot: this.gaps.contacts.missingInHubspot.length,
           missingInActiveCampaign: this.gaps.contacts.missingInActiveCampaign.length,
           fieldMismatches: this.gaps.contacts.fieldMismatches.length
         },
@@ -545,7 +412,7 @@ class DataGapAnalyzer {
     });
 
     // Company empty fields
-    if (this.gaps.companies.emptyFields) {
+    if (this.gaps.companies.emptyFields && Array.isArray(this.gaps.companies.emptyFields)) {
       this.gaps.companies.emptyFields.forEach(field => {
         if (field.count > 0) {
           recommendations.push({
@@ -559,7 +426,7 @@ class DataGapAnalyzer {
     }
 
     // Deal empty fields
-    if (this.gaps.deals.emptyFields) {
+    if (this.gaps.deals.emptyFields && Array.isArray(this.gaps.deals.emptyFields)) {
       this.gaps.deals.emptyFields.forEach(field => {
         if (field.count > 0) {
           recommendations.push({
@@ -618,12 +485,12 @@ ${this.gaps.contacts.emptyFields.map(field =>
 ).join('\n')}
 
 COMPANY EMPTY FIELD ANALYSIS:
-${this.gaps.companies.emptyFields ? this.gaps.companies.emptyFields.map(field => 
+${this.gaps.companies.emptyFields && Array.isArray(this.gaps.companies.emptyFields) ? this.gaps.companies.emptyFields.map(field => 
   `- ${field.field}: ${field.count} companies (${field.percentage}%) missing data`
 ).join('\n') : 'No company data available (free tier limitation)'}
 
 DEAL EMPTY FIELD ANALYSIS:
-${this.gaps.deals.emptyFields ? this.gaps.deals.emptyFields.map(field => 
+${this.gaps.deals.emptyFields && Array.isArray(this.gaps.deals.emptyFields) ? this.gaps.deals.emptyFields.map(field => 
   `- ${field.field}: ${field.count} deals (${field.percentage}%) missing data`
 ).join('\n') : 'No deal data available (free tier limitation)'}
 
@@ -652,23 +519,64 @@ Full details saved to: reports/data-gap-analysis.json
     console.log(summary);
     logger.info(`Gap analysis summary saved to ${summaryPath}`);
   }
-
-  async delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }
 
 // Run the gap analysis
 async function runGapAnalysis() {
-  const analyzer = new DataGapAnalyzer();
+  const flagParser = new FlagParser();
+  const options = flagParser.parse();
+  
+  if (options.help) {
+    flagParser.showHelp('scripts/data-gap-analyzer.js', 'HubSpot Data Gap Analyzer');
+    return;
+  }
+
+  const analyzer = new DataGapAnalyzer(options);
+  
+  // Handle cache operations
+  if (options.flushCache) {
+    analyzer.hubspotAPI.clearCache();
+    analyzer.activeCampaignAPI.clearCache();
+    console.log('🗑️  Cache cleared. Fresh data will be fetched from APIs.');
+  }
+  
+  if (options.cacheStats) {
+    const hubspotStats = analyzer.hubspotAPI.getCacheStats();
+    const acStats = analyzer.activeCampaignAPI.getCacheStats();
+    
+    console.log('📊 Cache Statistics:');
+    console.log('   HubSpot Cache:');
+    if (hubspotStats.enabled) {
+      Object.entries(hubspotStats.objects || {}).forEach(([type, info]) => {
+        console.log(`     ${type}: ${info.count} records (${info.age})`);
+      });
+    } else {
+      console.log('     Disabled');
+    }
+    
+    console.log('   ActiveCampaign Cache:');
+    if (acStats.enabled) {
+      Object.entries(acStats.objects || {}).forEach(([type, info]) => {
+        console.log(`     ${type}: ${info.count} records (${info.age})`);
+      });
+    } else {
+      console.log('     Disabled');
+    }
+    
+    if (!options.flushCache) return;
+  }
+
+  flagParser.logFlags(options);
   
   try {
     logger.info('Starting data gap analysis...');
     
-    // Fetch all data
+    // Fetch data based on flags
     await analyzer.getHubSpotContacts();
     await analyzer.getHubSpotCompanies();
     await analyzer.getHubSpotDeals();
+    
+    // Always fetch ActiveCampaign data for gap analysis
     await analyzer.getActiveCampaignContacts();
     await analyzer.getActiveCampaignDeals();
     
@@ -679,10 +587,15 @@ async function runGapAnalysis() {
     
     const report = analyzer.generateGapReport();
     
+    // Generate CSV report
+    const csvFilename = `data-gap-report-${new Date().toISOString().split('T')[0]}.csv`;
+    const csvRecords = await analyzer.csvReporter.writeGapReport(analyzer.gaps, csvFilename);
+    
     logger.info('✅ Gap analysis complete!');
     console.log('\n✅ Gap analysis complete!');
     console.log('📁 Check reports/data-gap-analysis.json for full details');
     console.log('📄 Check reports/data-gap-summary.txt for summary');
+    console.log(`📊 Check reports/${csvFilename} for actionable items (${csvRecords} records)`);
     
     return report;
     

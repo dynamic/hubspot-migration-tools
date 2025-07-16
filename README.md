@@ -333,3 +333,81 @@ Feel free to extend this toolkit with additional migration and analysis tools.
 ## License
 
 MIT License
+
+## HubSpot-ActiveCampaign Comparison
+
+Compare contacts between HubSpot and ActiveCampaign to analyze migration completeness and data quality.
+
+### Features
+
+- **Contact Matching**: Matches contacts across platforms using email, phone, or name
+- **Migration Analysis**: Identifies contacts that exist in only one platform
+- **Data Quality Check**: Compares field values and identifies discrepancies
+- **Actionable Reports**: Generates CSV reports with direct HubSpot links for easy action
+
+### Usage
+
+```bash
+# Compare all contacts between platforms
+npm run compare-platforms
+
+# Or run directly
+node scripts/hubspot-activecampaign-comparison.js
+```
+
+### Matching Logic
+
+The script uses a hierarchy to match contacts:
+1. **Email Match** (most reliable) - Primary identifier
+2. **Phone Match** - Secondary identifier if email doesn't match
+3. **Name Match** - Fallback for contacts without email/phone
+
+### Reports Generated
+
+1. **JSON Report** (`reports/hubspot-activecampaign-comparison.json`)
+   - Complete detailed analysis with all matched contacts
+   - Field-by-field differences for each match
+   - Comprehensive metadata and statistics
+
+2. **Summary Report** (`reports/hubspot-activecampaign-comparison-summary.txt`)
+   - Human-readable overview of the comparison
+   - Key statistics and recommendations
+   - Top missing contacts list
+
+3. **CSV Report** (`reports/hubspot-activecampaign-comparison.csv`)
+   - Actionable items for data cleanup
+   - Direct HubSpot links for easy access
+   - Prioritized recommendations
+
+### Output Format
+
+The comparison report includes:
+- **Matches**: Contacts found in both platforms with difference analysis
+- **HubSpot-Only**: Contacts that exist only in HubSpot (likely new contacts)
+- **ActiveCampaign-Only**: Contacts missing from HubSpot (migration gaps)
+- **Recommendations**: Prioritized actions for data quality improvement
+
+### Example Output
+
+```
+HUBSPOT-ACTIVECAMPAIGN COMPARISON REPORT
+========================================
+
+SUMMARY:
+- Total HubSpot Contacts: 1,250
+- Total ActiveCampaign Contacts: 1,180
+- Matched Contacts: 1,150
+- HubSpot-Only Contacts: 100
+- ActiveCampaign-Only Contacts: 30
+
+MIGRATION COVERAGE:
+- Coverage: 97.5%
+- Missing from HubSpot: 30
+
+RECOMMENDATIONS:
+1. [HIGH] 30 contacts exist in ActiveCampaign but not in HubSpot
+   Action: Review ActiveCampaign-only contacts and migrate if needed
+
+2. [MEDIUM] 45 field differences found across 1,150 matched contacts
+   Action: Review field differences and update data if needed
+```

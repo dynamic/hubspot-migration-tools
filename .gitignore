@@ -16,8 +16,15 @@ yarn-error.log*
 logs/
 reports/
 exports/
+.cache/
+cache/
 hubspot-duplicate-report.json
 hubspot-duplicate-summary.txt
+*.csv
+
+# Debug and temporary files
+debug-api.js
+test-connection.js
 
 # IDE
 .vscode/
