@@ -1,6 +1,6 @@
 const hubspot = require('@hubspot/api-client');
 const axios = require('axios');
-const config = require('./config');
+const config = require('../config');
 
 const hubspotClient = new hubspot.Client({
   accessToken: config.hubspot.accessToken

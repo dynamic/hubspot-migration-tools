@@ -75,9 +75,10 @@ class CSVReporter {
     });
 
     // Sort by priority (HIGH first) and count (descending)
+    const priorityRank = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
     csvData.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return a.priority === 'HIGH' ? -1 : 1;
+      if (priorityRank[a.priority] !== priorityRank[b.priority]) {
+        return priorityRank[b.priority] - priorityRank[a.priority];
       }
       return b.count - a.count;
     });

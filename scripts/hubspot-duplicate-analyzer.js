@@ -16,7 +16,9 @@ class DuplicateAnalyzer {
     
     this.hubspotAPI = new HubSpotAPI({
       flushCache: options.flushCache,
-      cache: true
+      cache: true,
+      cacheTtl: options.cacheTtl,
+      cacheDir: options.cacheDir
     });
     this.csvReporter = new CSVReporter();
     
