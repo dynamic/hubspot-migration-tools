@@ -190,7 +190,7 @@ class ActiveCampaignAPI {
     logger.info('🌐 Fetching contacts from ActiveCampaign API...');
     let allContacts = [];
     let offset = 0;
-    const limit = 100;
+    const limit = config.settings.batchSize;
 
     try {
       do {
@@ -250,7 +250,7 @@ class ActiveCampaignAPI {
     logger.info('🌐 Fetching deals from ActiveCampaign API...');
     let allDeals = [];
     let offset = 0;
-    const limit = 100;
+    const limit = config.settings.batchSize;
 
     try {
       do {

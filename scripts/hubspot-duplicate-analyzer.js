@@ -522,10 +522,15 @@ Full details saved to: reports/hubspot-duplicate-report.json
         Object.entries(categories).forEach(([category, items]) => {
           if (Array.isArray(items)) {
             items.forEach(item => {
-              if (item && Array.isArray(item.records)) {
-                item.records.forEach(record => {
-                  if (record && record.id) {
-                    record.hubspot_url = this.hubspotAPI.getRecordUrl(objectType, record.id);
+              if (item) {
+                // Handle different record array keys
+                ['records', 'contacts', 'companies', 'deals'].forEach(key => {
+                  if (Array.isArray(item[key])) {
+                    item[key].forEach(record => {
+                      if (record && record.id) {
+                        record.hubspot_url = this.hubspotAPI.getRecordUrl(objectType, record.id);
+                      }
+                    });
                   }
                 });
               }

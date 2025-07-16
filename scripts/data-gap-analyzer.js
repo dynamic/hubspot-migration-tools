@@ -1,5 +1,15 @@
 const axios = require('axios');
-const HubSpotAPI = require('../utils/hubspot-api');
+const Hub      contacts: {
+        missingInHubSpot: [],
+        missingInActiveCampaign: [],
+        fieldMismatches: [],
+        emptyFields: []
+      },
+      companies: {
+        emptyFields: []
+      },
+      deals: {
+        emptyFields: []equire('../utils/hubspot-api');
 const ActiveCampaignAPI = require('../utils/activecampaign-api');
 const CSVReporter = require('../utils/csv-reporter');
 const FlagParser = require('../utils/flag-parser');

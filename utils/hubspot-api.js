@@ -194,7 +194,7 @@ class HubSpotAPI {
     do {
       try {
         const params = {
-          limit: 100,
+          limit: config.settings.batchSize,
           properties: [
             'email', 'firstname', 'lastname', 'phone', 'company',
             'createdate', 'lastmodifieddate', 'hs_object_id',
@@ -247,7 +247,7 @@ class HubSpotAPI {
     do {
       try {
         const params = {
-          limit: 100,
+          limit: config.settings.batchSize,
           properties: [
             'name', 'domain', 'website', 'phone', 'city', 'state',
             'createdate', 'lastmodifieddate', 'industry', 'numberofemployees'
@@ -302,7 +302,7 @@ class HubSpotAPI {
     do {
       try {
         const params = {
-          limit: 100,
+          limit: config.settings.batchSize,
           properties: [
             'dealname', 'amount', 'dealstage', 'pipeline',
             'createdate', 'lastmodifieddate', 'closedate', 'dealtype'
@@ -376,7 +376,12 @@ class HubSpotAPI {
 
   // Helper method to get HubSpot record URL
   getRecordUrl(objectType, id) {
-    return `https://app.hubspot.com/${HubSpotAPI.objectMap[objectType]}/${id}`;
+    const portalId = config.hubspot.portalId;
+    if (!portalId) {
+      // Fallback to basic URL if no portal ID configured
+      return `https://app.hubspot.com/${HubSpotAPI.objectMap[objectType]}/${id}`;
+    }
+    return `https://app.hubspot.com/contacts/${portalId}/${HubSpotAPI.objectMap[objectType]}/${id}`;
   }
 
   // Cache management methods
