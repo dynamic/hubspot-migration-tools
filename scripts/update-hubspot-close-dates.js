@@ -105,25 +105,6 @@ class HubSpotCloseDateUpdater {
     return migrationDeals;
   }
 
-  getHubSpotDealStatus(stage) {
-    if (!stage) return 'unknown';
-    
-    const lowerStage = stage.toLowerCase();
-    if (lowerStage.includes('closedwon') || lowerStage.includes('won')) return 'won';
-    if (lowerStage.includes('closedlost') || lowerStage.includes('lost')) return 'lost';
-    return 'open';
-  }
-
-  getACDealStatus(status) {
-    switch (status) {
-      case '0': return 'open';
-      case '1': return 'won';
-      case '2': return 'lost';
-      case '3': return 'open'; // in progress
-      default: return 'unknown';
-    }
-  }
-
   async processDeal(deal) {
     try {
       logger.info(`Processing deal: ${deal.dealName} (ID: ${deal.hubspotId})`);

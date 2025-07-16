@@ -134,10 +134,7 @@ class CSVReporter {
         object_type: 'contact',
         priority: 'LOW',
         identifier: contact.email,
-        hubspot_close_date: null,
-        activecampaign_close_date: null,
-        correct_close_date: null,
-        days_difference: null,
+        ...this.getDefaultFields(),
         details: `Name: ${contact.firstName || ''} ${contact.lastName || ''}`,
         action: 'Import to ActiveCampaign'
       });
@@ -150,10 +147,7 @@ class CSVReporter {
         object_type: 'contact',
         priority: 'MEDIUM',
         identifier: mismatch.email,
-        hubspot_close_date: null,
-        activecampaign_close_date: null,
-        correct_close_date: null,
-        days_difference: null,
+        ...this.getDefaultFields(),
         details: `${mismatch.mismatches.length} field(s) different: ${mismatch.mismatches.map(d => d.field).join(', ')}`,
         action: 'Review and update'
       });
@@ -168,10 +162,7 @@ class CSVReporter {
           object_type: 'contact',
           priority,
           identifier: fieldData.field,
-          hubspot_close_date: null,
-          activecampaign_close_date: null,
-          correct_close_date: null,
-          days_difference: null,
+          ...this.getDefaultFields(),
           details: `${fieldData.count} contacts (${fieldData.percentage}%) missing ${fieldData.field}`,
           action: `Populate ${fieldData.field} from ActiveCampaign or external sources`
         });

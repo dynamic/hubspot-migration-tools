@@ -27,7 +27,7 @@ module.exports = {
   // Utility functions for migration date checking
   isMigrationDate(dateString) {
     if (!dateString) return false;
-    return new Date(dateString).toISOString().split('T')[0] === this.MIGRATION_DATE;
+    return new Date(dateString).toISOString().split('T')[0] === module.exports.MIGRATION_DATE;
   },
 
   // Deal status helper functions
