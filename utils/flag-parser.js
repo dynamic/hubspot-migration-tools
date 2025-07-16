@@ -147,7 +147,8 @@ Examples:
       contacts: flags.includeContacts,
       companies: flags.includeCompanies,
       deals: flags.includeDeals,
-      focusDeals: flags.focusDeals
+      focusDeals: flags.focusDeals,
+      migrationDealsOnly: flags.migrationDealsOnly
     });
   }
 }

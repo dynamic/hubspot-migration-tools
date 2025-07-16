@@ -4,12 +4,13 @@ const HubSpotAPI = require('../utils/hubspot-api');
 const ActiveCampaignAPI = require('../utils/activecampaign-api');
 const logger = require('../utils/logger');
 const FlagParser = require('../utils/flag-parser');
+const { MIGRATION_DATE } = require('../config/migration-constants');
 
 class HubSpotCloseDateUpdater {
   constructor() {
     this.hubspot = new HubSpotAPI();
     this.activeCampaign = new ActiveCampaignAPI();
-    this.MIGRATION_DATE = '2025-07-16'; // Updated to correct timezone date
+    this.MIGRATION_DATE = MIGRATION_DATE;
     this.updatedCount = 0;
     this.skippedCount = 0;
     this.errorCount = 0;
@@ -146,7 +147,13 @@ class HubSpotCloseDateUpdater {
       }
 
       // Convert AC date to HubSpot format (Unix timestamp in milliseconds)
-      const newCloseDate = new Date(deal.newCloseDate).getTime();
+      const parsedDate = new Date(deal.newCloseDate);
+      if (isNaN(parsedDate.getTime())) {
+        logger.error(`Invalid new close date for deal ${deal.dealName}: ${deal.newCloseDate}`);
+        this.skippedCount++;
+        return;
+      }
+      const newCloseDate = parsedDate.getTime();
       
       if (this.dryRun) {
         logger.info(`DRY RUN: Would update close date from ${new Date(currentCloseDate).toLocaleDateString()} to ${new Date(deal.newCloseDate).toLocaleDateString()}`);
