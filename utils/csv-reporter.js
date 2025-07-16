@@ -190,9 +190,10 @@ class CSVReporter {
     }
 
     // Sort by priority and impact
+    const priorityRank = { 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3 };
     csvData.sort((a, b) => {
       if (a.priority !== b.priority) {
-        return a.priority === 'HIGH' ? -1 : 1;
+        return priorityRank[a.priority] - priorityRank[b.priority];
       }
       return a.gap_type === 'missing_in_hubspot' ? -1 : 1;
     });
