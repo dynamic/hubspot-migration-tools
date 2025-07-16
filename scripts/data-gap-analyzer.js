@@ -7,7 +7,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
-const { MIGRATION_DATE } = require('../config/migration-constants');
+const { MIGRATION_DATE, isMigrationDate, getHubSpotDealStatus, getACDealStatus } = require('../config/migration-constants');
 
 class DataGapAnalyzer {
   constructor(options = {}) {
@@ -317,8 +317,7 @@ class DataGapAnalyzer {
       const closeDate = deal.properties.closedate;
       if (!closeDate) return false;
       
-      const dealDate = new Date(closeDate).toISOString().split('T')[0];
-      return dealDate === MIGRATION_DATE;
+      return isMigrationDate(closeDate);
     });
   }
 
@@ -762,8 +761,8 @@ Full details saved to: reports/data-gap-analysis.json
     };
     
     // Compare status/stage
-    const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
-    const acStatus = this.getACDealStatus(acDeal.status);
+    const hsStatus = getHubSpotDealStatus(hsDeal.properties.dealstage);
+    const acStatus = getACDealStatus(acDeal.status);
     
     if (hsStatus !== acStatus) {
       this.gaps.deals.statusMismatches.push({
@@ -797,12 +796,12 @@ Full details saved to: reports/data-gap-analysis.json
   analyzeCloseDateMismatch(hsDeal, acDeal, comparison) {
     const hsCloseDate = hsDeal.properties.closedate;
     const acCloseDate = acDeal.edate;
-    const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
-    const acStatus = this.getACDealStatus(acDeal.status);
+    const hsStatus = getHubSpotDealStatus(hsDeal.properties.dealstage);
+    const acStatus = getACDealStatus(acDeal.status);
     
     // Migration date check - deals with this date need to be updated
     const migrationDate = MIGRATION_DATE;
-    const isMigrationDate = hsCloseDate && new Date(hsCloseDate).toISOString().split('T')[0] === migrationDate;
+    const isMigrationDateCheck = isMigrationDate(hsCloseDate);
     
     // Only analyze close dates for won/lost deals
     if (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost') {
@@ -823,7 +822,7 @@ Full details saved to: reports/data-gap-analysis.json
       }
       
       // Case 2: HubSpot has migration date - needs to be updated to AC date
-      else if (isMigrationDate && acCloseDate) {
+      else if (isMigrationDateCheck && acCloseDate) {
         this.gaps.deals.dateMismatches.push({
           ...comparison,
           hubspotCloseDate: hsCloseDate,
@@ -832,13 +831,13 @@ Full details saved to: reports/data-gap-analysis.json
           issueType: 'migration_date_needs_update',
           priority: 'HIGH',
           isMigrationDate: true,
-          concern: 'HubSpot has migration date (7/15/2025) - should use ActiveCampaign date',
+          concern: `HubSpot has migration date (${new Date(migrationDate).toLocaleDateString()}) - should use ActiveCampaign date`,
           recommendation: `Update HubSpot close date from migration date to ${new Date(acCloseDate).toLocaleDateString()}`
         });
       }
       
       // Case 3: Both have close dates but they differ (and not migration date)
-      else if (hsCloseDate && acCloseDate && !isMigrationDate) {
+      else if (hsCloseDate && acCloseDate && !isMigrationDateCheck) {
         const hsDate = new Date(hsCloseDate);
         const acDate = new Date(acCloseDate);
         
@@ -862,7 +861,7 @@ Full details saved to: reports/data-gap-analysis.json
       }
       
       // Case 4: HubSpot has close date but AC doesn't (unusual but possible)
-      else if (hsCloseDate && !acCloseDate && !isMigrationDate) {
+      else if (hsCloseDate && !acCloseDate && !isMigrationDateCheck) {
         this.gaps.deals.dateMismatches.push({
           ...comparison,
           hubspotCloseDate: hsCloseDate,
@@ -944,25 +943,6 @@ Full details saved to: reports/data-gap-analysis.json
     });
     
     logger.info(`Found ${this.gaps.deals.migrationIssues.length} potential migration issues`);
-  }
-
-  getHubSpotDealStatus(stage) {
-    if (!stage) return 'unknown';
-    
-    const lowerStage = stage.toLowerCase();
-    if (lowerStage.includes('closedwon') || lowerStage.includes('won')) return 'won';
-    if (lowerStage.includes('closedlost') || lowerStage.includes('lost')) return 'lost';
-    return 'open';
-  }
-
-  getACDealStatus(status) {
-    switch (status) {
-      case '0': return 'open';
-      case '1': return 'won';
-      case '2': return 'lost';
-      case '3': return 'open'; // in progress
-      default: return 'unknown';
-    }
   }
 
   analyzeCloseDateIssues() {

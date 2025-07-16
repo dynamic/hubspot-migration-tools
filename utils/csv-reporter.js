@@ -9,6 +9,16 @@ class CSVReporter {
     this.ensureReportsDir();
   }
 
+  // Helper function to provide default fields for CSV consistency
+  getDefaultFields() {
+    return {
+      hubspot_close_date: null,
+      activecampaign_close_date: null,
+      correct_close_date: null,
+      days_difference: null
+    };
+  }
+
   ensureReportsDir() {
     if (!fs.existsSync(this.reportsDir)) {
       fs.mkdirSync(this.reportsDir, { recursive: true });
@@ -112,10 +122,7 @@ class CSVReporter {
         object_type: 'contact',
         priority: 'HIGH',
         identifier: contact.email,
-        hubspot_close_date: null,
-        activecampaign_close_date: null,
-        correct_close_date: null,
-        days_difference: null,
+        ...this.getDefaultFields(),
         details: `Name: ${contact.firstName || ''} ${contact.lastName || ''}`,
         action: 'Import to HubSpot'
       });

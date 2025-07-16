@@ -4,7 +4,7 @@ const HubSpotAPI = require('../utils/hubspot-api');
 const ActiveCampaignAPI = require('../utils/activecampaign-api');
 const logger = require('../utils/logger');
 const FlagParser = require('../utils/flag-parser');
-const { MIGRATION_DATE } = require('../config/migration-constants');
+const { MIGRATION_DATE, isMigrationDate, getHubSpotDealStatus, getACDealStatus } = require('../config/migration-constants');
 
 class HubSpotCloseDateUpdater {
   constructor() {
@@ -74,7 +74,7 @@ class HubSpotCloseDateUpdater {
       const hsCloseDate = hsDeal.properties.closedate;
       
       // Check if this deal has the migration date
-      if (hsCloseDate && new Date(hsCloseDate).toISOString().split('T')[0] === this.MIGRATION_DATE) {
+      if (hsCloseDate && isMigrationDate(hsCloseDate)) {
         const dealName = hsDeal.properties.dealname?.toLowerCase().trim();
         
         if (dealName) {
@@ -82,8 +82,8 @@ class HubSpotCloseDateUpdater {
           
           if (matchingAcDeal && matchingAcDeal.edate) {
             // Only include deals that are won/lost (should have close dates)
-            const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
-            const acStatus = this.getACDealStatus(matchingAcDeal.status);
+            const hsStatus = getHubSpotDealStatus(hsDeal.properties.dealstage);
+            const acStatus = getACDealStatus(matchingAcDeal.status);
             
             if (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost') {
               migrationDeals.push({
@@ -137,10 +137,9 @@ class HubSpotCloseDateUpdater {
       }
 
       const currentCloseDate = currentDeal.properties.closedate;
-      const isMigrationDate = currentCloseDate && 
-        new Date(currentCloseDate).toISOString().split('T')[0] === this.MIGRATION_DATE;
+      const isMigrationDateCheck = isMigrationDate(currentCloseDate);
 
-      if (!isMigrationDate) {
+      if (!isMigrationDateCheck) {
         logger.info(`Skipping deal ${deal.dealName} - close date has been changed from migration date`);
         this.skippedCount++;
         return;
