@@ -24,7 +24,7 @@ class ActiveCampaignAPI {
     // Cache configuration
     this.cacheOptions = {
       enabled: options.cache !== false,
-      ttlMinutes: options.cacheTtl || 60,
+      ttlMinutes: options.cacheTtl || config.settings.cacheTtlMinutes,
       directory: options.cacheDir || path.join(__dirname, '..', 'cache'),
       flushCache: options.flushCache || false
     };

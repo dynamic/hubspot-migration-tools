@@ -99,6 +99,9 @@ Options:
   --no-deals          Skip deals analysis
   --flush-cache       Clear all cached data and fetch fresh from APIs
   --cache-stats       Show cache statistics
+  --no-cache          Disable caching entirely
+  --cache-ttl <mins>  Cache TTL in minutes (default: 60)
+  --cache-dir <path>  Cache directory path (default: ./cache)
   --help, -h          Show this help message
 
 Performance Options:
