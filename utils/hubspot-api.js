@@ -485,6 +485,16 @@ class HubSpotAPI {
       return null;
     }
   }
+
+  async getDealProperties() {
+    try {
+      const response = await this.client.get('/crm/v3/properties/deals');
+      return response.data.results;
+    } catch (error) {
+      logger.error('Error fetching deal properties:', error.message);
+      return [];
+    }
+  }
 }
 
 module.exports = HubSpotAPI;
