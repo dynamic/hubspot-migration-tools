@@ -250,13 +250,36 @@ class CSVReporter {
       // Deal date mismatches
       if (gaps.deals.dateMismatches) {
         gaps.deals.dateMismatches.forEach(mismatch => {
+          const priority = mismatch.priority || 'HIGH';
+          const hsDate = mismatch.hubspotCloseDate ? new Date(mismatch.hubspotCloseDate).toLocaleDateString() : 'None';
+          const acDate = mismatch.activeCampaignCloseDate ? new Date(mismatch.activeCampaignCloseDate).toLocaleDateString() : 'None';
+          const correctDate = mismatch.correctCloseDate ? new Date(mismatch.correctCloseDate).toLocaleDateString() : 'Manual Review';
+          
+          let details = '';
+          switch (mismatch.issueType) {
+            case 'missing_close_date_in_hubspot':
+              details = `HubSpot: ${hsDate} | AC: ${acDate} | Correct: ${correctDate}`;
+              break;
+            case 'close_date_mismatch':
+              details = `HubSpot: ${hsDate} | AC: ${acDate} | Diff: ${Math.abs(mismatch.daysDifference)} days | Correct: ${correctDate}`;
+              break;
+            case 'missing_close_date_in_ac':
+              details = `HubSpot: ${hsDate} | AC: ${acDate} | Correct: ${correctDate}`;
+              break;
+            case 'both_missing_close_date':
+              details = `HubSpot: ${hsDate} | AC: ${acDate} | Status: Won/Lost but no close date`;
+              break;
+            default:
+              details = `HubSpot: ${hsDate} | AC: ${acDate} | Correct: ${correctDate}`;
+          }
+          
           csvData.push({
-            gap_type: 'date_mismatch',
+            gap_type: 'close_date_issue',
             object_type: 'deal',
-            priority: 'MEDIUM',
+            priority: priority,
             identifier: mismatch.dealName,
-            details: `Close dates differ by ${mismatch.daysDifference} days`,
-            action: 'Review and sync close dates between platforms'
+            details: details,
+            action: mismatch.recommendation || 'Review and sync close dates between platforms'
           });
         });
       }

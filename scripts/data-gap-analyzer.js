@@ -661,6 +661,9 @@ Full details saved to: reports/data-gap-analysis.json
     // Analyze migration issues
     this.analyzeMigrationIssues();
     
+    // Analyze close date issues for won/lost deals
+    this.analyzeCloseDateIssues();
+    
     logger.info(`✅ Deal analysis complete: ${this.acDeals.length} AC deals vs ${this.hubspotDeals.length} HubSpot deals`);
   }
 
@@ -769,22 +772,81 @@ Full details saved to: reports/data-gap-analysis.json
       });
     }
     
-    // Compare dates
+    // Enhanced close date comparison - focus on won/lost deals
+    this.analyzeCloseDateMismatch(hsDeal, acDeal, comparison);
+  }
+
+  analyzeCloseDateMismatch(hsDeal, acDeal, comparison) {
     const hsCloseDate = hsDeal.properties.closedate;
     const acCloseDate = acDeal.edate;
+    const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
+    const acStatus = this.getACDealStatus(acDeal.status);
     
-    if (hsCloseDate && acCloseDate) {
-      const hsDate = new Date(hsCloseDate);
-      const acDate = new Date(acCloseDate);
+    // Only analyze close dates for won/lost deals
+    if (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost') {
       
-      // Check if dates differ by more than 1 day
-      if (Math.abs(hsDate.getTime() - acDate.getTime()) > 86400000) {
+      // Case 1: AC has close date but HubSpot doesn't (common migration issue)
+      if (acCloseDate && !hsCloseDate) {
+        this.gaps.deals.dateMismatches.push({
+          ...comparison,
+          hubspotCloseDate: null,
+          activeCampaignCloseDate: acCloseDate,
+          correctCloseDate: acCloseDate,
+          issueType: 'missing_close_date_in_hubspot',
+          priority: 'HIGH',
+          concern: 'HubSpot missing close date - should use ActiveCampaign date',
+          recommendation: `Set HubSpot close date to ${new Date(acCloseDate).toLocaleDateString()}`
+        });
+      }
+      
+      // Case 2: Both have close dates but they differ
+      else if (hsCloseDate && acCloseDate) {
+        const hsDate = new Date(hsCloseDate);
+        const acDate = new Date(acCloseDate);
+        
+        // Check if dates differ by more than 1 day
+        if (Math.abs(hsDate.getTime() - acDate.getTime()) > 86400000) {
+          const daysDifference = Math.round((hsDate.getTime() - acDate.getTime()) / 86400000);
+          
+          this.gaps.deals.dateMismatches.push({
+            ...comparison,
+            hubspotCloseDate: hsCloseDate,
+            activeCampaignCloseDate: acCloseDate,
+            correctCloseDate: acCloseDate,
+            daysDifference: daysDifference,
+            issueType: 'close_date_mismatch',
+            priority: 'HIGH',
+            concern: `Close dates differ by ${Math.abs(daysDifference)} days - should use ActiveCampaign date`,
+            recommendation: `Update HubSpot close date from ${hsDate.toLocaleDateString()} to ${acDate.toLocaleDateString()}`
+          });
+        }
+      }
+      
+      // Case 3: HubSpot has close date but AC doesn't (unusual but possible)
+      else if (hsCloseDate && !acCloseDate) {
         this.gaps.deals.dateMismatches.push({
           ...comparison,
           hubspotCloseDate: hsCloseDate,
-          activeCampaignCloseDate: acCloseDate,
-          daysDifference: Math.round((hsDate.getTime() - acDate.getTime()) / 86400000),
-          concern: 'Deal close dates differ between platforms'
+          activeCampaignCloseDate: null,
+          correctCloseDate: hsCloseDate,
+          issueType: 'missing_close_date_in_ac',
+          priority: 'MEDIUM',
+          concern: 'ActiveCampaign missing close date - HubSpot has it',
+          recommendation: `Review: HubSpot has close date ${new Date(hsCloseDate).toLocaleDateString()} but AC doesn't`
+        });
+      }
+      
+      // Case 4: Neither has close date but deal is won/lost (major issue)
+      else if (!hsCloseDate && !acCloseDate && (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost')) {
+        this.gaps.deals.dateMismatches.push({
+          ...comparison,
+          hubspotCloseDate: null,
+          activeCampaignCloseDate: null,
+          correctCloseDate: null,
+          issueType: 'both_missing_close_date',
+          priority: 'HIGH',
+          concern: 'Won/Lost deal missing close date in both platforms',
+          recommendation: 'Manual review required - determine actual close date'
         });
       }
     }
@@ -793,27 +855,36 @@ Full details saved to: reports/data-gap-analysis.json
   analyzeMigrationIssues() {
     logger.info('🔍 Analyzing potential migration issues...');
     
-    // Check for deals with problematic statuses
+    // Check for deals with problematic statuses and close dates
     this.hubspotDeals.forEach(deal => {
       const issues = [];
+      const dealStage = deal.properties.dealstage;
+      const closeDate = deal.properties.closedate;
+      const amount = deal.properties.amount;
       
       // Check for missing close dates on closed deals
-      if ((deal.properties.dealstage === 'closedwon' || deal.properties.dealstage === 'closedlost') && 
-          !deal.properties.closedate) {
-        issues.push('Closed deal missing close date');
+      if ((dealStage === 'closedwon' || dealStage === 'closedlost') && !closeDate) {
+        issues.push('Closed deal missing close date - migration issue');
       }
       
       // Check for missing amounts on won deals
-      if (deal.properties.dealstage === 'closedwon' && 
-          (!deal.properties.amount || parseFloat(deal.properties.amount) === 0)) {
+      if (dealStage === 'closedwon' && (!amount || parseFloat(amount) === 0)) {
         issues.push('Won deal missing or zero amount');
       }
       
-      // Check for inconsistent stage naming
-      if (deal.properties.dealstage && !['closedwon', 'closedlost'].includes(deal.properties.dealstage)) {
+      // Check for inconsistent stage naming - open deals with close dates
+      if (dealStage && !['closedwon', 'closedlost'].includes(dealStage)) {
         // This might be an open deal, check if it has a close date
-        if (deal.properties.closedate) {
+        if (closeDate) {
           issues.push('Open deal has close date - possible migration issue');
+        }
+      }
+      
+      // Check for deals with "appointment" or "qualified" stage that might need close dates
+      if (dealStage && (dealStage.includes('appointment') || dealStage.includes('qualified'))) {
+        if (!closeDate) {
+          // This might be OK for active deals, but flag for review
+          issues.push('Active deal stage without close date - verify if correct');
         }
       }
       
@@ -821,11 +892,12 @@ Full details saved to: reports/data-gap-analysis.json
         this.gaps.deals.migrationIssues.push({
           hubspotId: deal.id,
           dealName: deal.properties.dealname,
-          stage: deal.properties.dealstage,
-          amount: deal.properties.amount,
-          closeDate: deal.properties.closedate,
+          stage: dealStage,
+          amount: amount,
+          closeDate: closeDate,
           issues: issues,
-          concern: 'Potential migration data inconsistency'
+          concern: 'Potential migration data inconsistency',
+          needsCloseDateReview: issues.some(issue => issue.includes('close date'))
         });
       }
     });
@@ -850,6 +922,101 @@ Full details saved to: reports/data-gap-analysis.json
       case '3': return 'open'; // in progress
       default: return 'unknown';
     }
+  }
+
+  analyzeMigrationIssues() {
+    logger.info('🔍 Analyzing potential migration issues...');
+    
+    // Check for deals with problematic statuses and close dates
+    this.hubspotDeals.forEach(deal => {
+      const issues = [];
+      const dealStage = deal.properties.dealstage;
+      const closeDate = deal.properties.closedate;
+      const amount = deal.properties.amount;
+      
+      // Check for missing close dates on closed deals
+      if ((dealStage === 'closedwon' || dealStage === 'closedlost') && !closeDate) {
+        issues.push('Closed deal missing close date - migration issue');
+      }
+      
+      // Check for missing amounts on won deals
+      if (dealStage === 'closedwon' && (!amount || parseFloat(amount) === 0)) {
+        issues.push('Won deal missing or zero amount');
+      }
+      
+      // Check for inconsistent stage naming - open deals with close dates
+      if (dealStage && !['closedwon', 'closedlost'].includes(dealStage)) {
+        // This might be an open deal, check if it has a close date
+        if (closeDate) {
+          issues.push('Open deal has close date - possible migration issue');
+        }
+      }
+      
+      // Check for deals with "appointment" or "qualified" stage that might need close dates
+      if (dealStage && (dealStage.includes('appointment') || dealStage.includes('qualified'))) {
+        if (!closeDate) {
+          // This might be OK for active deals, but flag for review
+          issues.push('Active deal stage without close date - verify if correct');
+        }
+      }
+      
+      if (issues.length > 0) {
+        this.gaps.deals.migrationIssues.push({
+          hubspotId: deal.id,
+          dealName: deal.properties.dealname,
+          stage: dealStage,
+          amount: amount,
+          closeDate: closeDate,
+          issues: issues,
+          concern: 'Potential migration data inconsistency',
+          needsCloseDateReview: issues.some(issue => issue.includes('close date'))
+        });
+      }
+    });
+    
+    logger.info(`Found ${this.gaps.deals.migrationIssues.length} potential migration issues`);
+  }
+
+  analyzeCloseDateIssues() {
+    logger.info('🔍 Analyzing close date issues for won/lost deals...');
+    
+    // Find all HubSpot deals that are won/lost but missing close dates
+    const wonLostDealsWithoutCloseDate = this.hubspotDeals.filter(deal => {
+      const stage = deal.properties.dealstage;
+      const closeDate = deal.properties.closedate;
+      return (stage === 'closedwon' || stage === 'closedlost') && !closeDate;
+    });
+    
+    // Try to find matching AC deals to get the close date
+    wonLostDealsWithoutCloseDate.forEach(hsDeal => {
+      const dealName = hsDeal.properties.dealname?.toLowerCase().trim();
+      if (dealName) {
+        const matchingAcDeals = this.acDeals.filter(acDeal => 
+          acDeal.title?.toLowerCase().trim() === dealName
+        );
+        
+        if (matchingAcDeals.length > 0) {
+          const acDeal = matchingAcDeals[0]; // Take the first match
+          if (acDeal.edate) {
+            // Found a matching AC deal with a close date
+            this.gaps.deals.dateMismatches.push({
+              hubspotId: hsDeal.id,
+              activeCampaignId: acDeal.id,
+              dealName: hsDeal.properties.dealname,
+              hubspotCloseDate: null,
+              activeCampaignCloseDate: acDeal.edate,
+              correctCloseDate: acDeal.edate,
+              issueType: 'missing_close_date_in_hubspot',
+              priority: 'HIGH',
+              concern: 'Won/Lost deal missing close date in HubSpot - found in ActiveCampaign',
+              recommendation: `Set HubSpot close date to ${new Date(acDeal.edate).toLocaleDateString()}`
+            });
+          }
+        }
+      }
+    });
+    
+    logger.info(`Found ${wonLostDealsWithoutCloseDate.length} won/lost deals without close dates`);
   }
 }
 
