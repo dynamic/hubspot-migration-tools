@@ -148,6 +148,7 @@ Examples:
       companies: flags.includeCompanies,
       deals: flags.includeDeals,
       focusDeals: flags.focusDeals,
+      migrationDealsOnly: flags.migrationDealsOnly,
       migrationDealsOnly: flags.migrationDealsOnly
     });
   }

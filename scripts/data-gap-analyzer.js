@@ -892,58 +892,7 @@ Full details saved to: reports/data-gap-analysis.json
     }
   }
 
-  analyzeMigrationIssues() {
-    logger.info('🔍 Analyzing potential migration issues...');
-    
-    // Check for deals with problematic statuses and close dates
-    this.hubspotDeals.forEach(deal => {
-      const issues = [];
-      const dealStage = deal.properties.dealstage;
-      const closeDate = deal.properties.closedate;
-      const amount = deal.properties.amount;
-      
-      // Check for missing close dates on closed deals
-      if ((dealStage === 'closedwon' || dealStage === 'closedlost') && !closeDate) {
-        issues.push('Closed deal missing close date - migration issue');
-      }
-      
-      // Check for missing amounts on won deals
-      if (dealStage === 'closedwon' && (!amount || parseFloat(amount) === 0)) {
-        issues.push('Won deal missing or zero amount');
-      }
-      
-      // Check for inconsistent stage naming - open deals with close dates
-      if (dealStage && !['closedwon', 'closedlost'].includes(dealStage)) {
-        // This might be an open deal, check if it has a close date
-        if (closeDate) {
-          issues.push('Open deal has close date - possible migration issue');
-        }
-      }
-      
-      // Check for deals with "appointment" or "qualified" stage that might need close dates
-      if (dealStage && (dealStage.includes('appointment') || dealStage.includes('qualified'))) {
-        if (!closeDate) {
-          // This might be OK for active deals, but flag for review
-          issues.push('Active deal stage without close date - verify if correct');
-        }
-      }
-      
-      if (issues.length > 0) {
-        this.gaps.deals.migrationIssues.push({
-          hubspotId: deal.id,
-          dealName: deal.properties.dealname,
-          stage: dealStage,
-          amount: amount,
-          closeDate: closeDate,
-          issues: issues,
-          concern: 'Potential migration data inconsistency',
-          needsCloseDateReview: issues.some(issue => issue.includes('close date'))
-        });
-      }
-    });
-    
-    logger.info(`Found ${this.gaps.deals.migrationIssues.length} potential migration issues`);
-  }
+
 
   analyzeCloseDateIssues() {
     logger.info('🔍 Analyzing close date issues for won/lost deals...');
