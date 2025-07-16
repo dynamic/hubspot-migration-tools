@@ -311,6 +311,17 @@ class DataGapAnalyzer {
     }));
   }
 
+  filterMigrationDeals(deals) {
+    const MIGRATION_DATE = '2025-07-16';
+    return deals.filter(deal => {
+      const closeDate = deal.properties.closedate;
+      if (!closeDate) return false;
+      
+      const dealDate = new Date(closeDate).toISOString().split('T')[0];
+      return dealDate === MIGRATION_DATE;
+    });
+  }
+
   analyzeDealEmptyFields() {
     const emptyFieldCounts = {
       dealname: 0,
@@ -592,6 +603,13 @@ Full details saved to: reports/data-gap-analysis.json
   async analyzeData() {
     logger.info('Starting comprehensive data analysis...');
     
+    // Filter deals for migration-only analysis if requested
+    if (this.options.migrationDealsOnly) {
+      logger.info('🎯 Filtering to migration deals only (close date = 2025-07-16)...');
+      this.hubspotDeals = this.filterMigrationDeals(this.hubspotDeals);
+      logger.info(`Found ${this.hubspotDeals.length} HubSpot deals with migration close date`);
+    }
+    
     // If focusing on deals, skip contact analysis
     if (this.options.focusDeals) {
       logger.info('🎯 Focusing on deals analysis only...');
@@ -783,7 +801,7 @@ Full details saved to: reports/data-gap-analysis.json
     const acStatus = this.getACDealStatus(acDeal.status);
     
     // Migration date check - deals with this date need to be updated
-    const MIGRATION_DATE = '2025-07-15';
+    const MIGRATION_DATE = '2025-07-16';
     const isMigrationDate = hsCloseDate && new Date(hsCloseDate).toISOString().split('T')[0] === MIGRATION_DATE;
     
     // Only analyze close dates for won/lost deals

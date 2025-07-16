@@ -1,35 +1,28 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
 const HubSpotAPI = require('../utils/hubspot-api');
+const ActiveCampaignAPI = require('../utils/activecampaign-api');
 const logger = require('../utils/logger');
 const FlagParser = require('../utils/flag-parser');
 
 class HubSpotCloseDateUpdater {
   constructor() {
     this.hubspot = new HubSpotAPI();
-    this.MIGRATION_DATE = '2025-07-15';
+    this.activeCampaign = new ActiveCampaignAPI();
+    this.MIGRATION_DATE = '2025-07-16'; // Updated to correct timezone date
     this.updatedCount = 0;
     this.skippedCount = 0;
     this.errorCount = 0;
     this.dryRun = false;
   }
 
-  async updateCloseDates(jsonFilePath, dryRun = false) {
+  async updateCloseDates(dryRun = false) {
     this.dryRun = dryRun;
     
     logger.info(`Starting close date update process${dryRun ? ' (DRY RUN)' : ''}`);
     
-    // Read the gap analysis JSON file
-    const gapData = await this.loadGapAnalysisData(jsonFilePath);
-    if (!gapData) {
-      logger.error('Failed to load gap analysis data');
-      return;
-    }
-
-    // Filter for migration date deals that need updating
-    const migrationDeals = await this.identifyMigrationDeals(gapData);
+    // Get deals directly from both platforms
+    const migrationDeals = await this.identifyMigrationDeals();
     logger.info(`Found ${migrationDeals.length} deals with migration date (${this.MIGRATION_DATE}) that need updating`);
 
     if (migrationDeals.length === 0) {
@@ -55,45 +48,79 @@ class HubSpotCloseDateUpdater {
     }
   }
 
-  async loadGapAnalysisData(jsonFilePath) {
-    try {
-      if (!fs.existsSync(jsonFilePath)) {
-        logger.error(`Gap analysis file not found: ${jsonFilePath}`);
-        return null;
+  async identifyMigrationDeals() {
+    logger.info('Fetching deals from both platforms...');
+    
+    // Get deals from both platforms
+    const hubspotDeals = await this.hubspot.getAllDeals();
+    const acDeals = await this.activeCampaign.getAllDeals();
+    
+    logger.info(`Loaded ${hubspotDeals.length} HubSpot deals and ${acDeals.length} ActiveCampaign deals`);
+    
+    // Create lookup map for AC deals
+    const acDealsByTitle = new Map();
+    acDeals.forEach(deal => {
+      const title = deal.title?.toLowerCase().trim();
+      if (title) {
+        acDealsByTitle.set(title, deal);
       }
-
-      const data = fs.readFileSync(jsonFilePath, 'utf8');
-      const gapData = JSON.parse(data);
-      
-      if (!gapData.deals || !gapData.deals.dateMismatches) {
-        logger.error('No date mismatches found in gap analysis data');
-        return null;
-      }
-
-      return gapData;
-    } catch (error) {
-      logger.error(`Error loading gap analysis data: ${error.message}`);
-      return null;
-    }
-  }
-
-  async identifyMigrationDeals(gapData) {
+    });
+    
     const migrationDeals = [];
     
-    for (const mismatch of gapData.deals.dateMismatches) {
-      // Only process deals with migration date that have AC close date
-      if (mismatch.isMigrationDate && mismatch.activeCampaignCloseDate) {
-        migrationDeals.push({
-          hubspotId: mismatch.hubspotId,
-          dealName: mismatch.dealName,
-          currentCloseDate: mismatch.hubspotCloseDate,
-          newCloseDate: mismatch.activeCampaignCloseDate,
-          activeCampaignId: mismatch.activeCampaignId
-        });
+    // Find HubSpot deals with migration date that have matching AC deals
+    for (const hsDeal of hubspotDeals) {
+      const hsCloseDate = hsDeal.properties.closedate;
+      
+      // Check if this deal has the migration date
+      if (hsCloseDate && new Date(hsCloseDate).toISOString().split('T')[0] === this.MIGRATION_DATE) {
+        const dealName = hsDeal.properties.dealname?.toLowerCase().trim();
+        
+        if (dealName) {
+          const matchingAcDeal = acDealsByTitle.get(dealName);
+          
+          if (matchingAcDeal && matchingAcDeal.edate) {
+            // Only include deals that are won/lost (should have close dates)
+            const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
+            const acStatus = this.getACDealStatus(matchingAcDeal.status);
+            
+            if (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost') {
+              migrationDeals.push({
+                hubspotId: hsDeal.id,
+                dealName: hsDeal.properties.dealname,
+                currentCloseDate: hsCloseDate,
+                newCloseDate: matchingAcDeal.edate,
+                activeCampaignId: matchingAcDeal.id,
+                hubspotStatus: hsStatus,
+                activeCampaignStatus: acStatus
+              });
+            }
+          }
+        }
       }
     }
-
+    
+    logger.info(`Identified ${migrationDeals.length} migration deals that need close date updates`);
     return migrationDeals;
+  }
+
+  getHubSpotDealStatus(stage) {
+    if (!stage) return 'unknown';
+    
+    const lowerStage = stage.toLowerCase();
+    if (lowerStage.includes('closedwon') || lowerStage.includes('won')) return 'won';
+    if (lowerStage.includes('closedlost') || lowerStage.includes('lost')) return 'lost';
+    return 'open';
+  }
+
+  getACDealStatus(status) {
+    switch (status) {
+      case '0': return 'open';
+      case '1': return 'won';
+      case '2': return 'lost';
+      case '3': return 'open'; // in progress
+      default: return 'unknown';
+    }
   }
 
   async processDeal(deal) {
@@ -152,19 +179,8 @@ async function main() {
   const flags = flagParser.parse();
   const dryRun = flags.dryRun || false;
   
-  // Default to the most recent gap analysis JSON file
-  const reportsDir = path.join(__dirname, '..', 'reports');
-  const defaultJsonFile = path.join(reportsDir, 'data-gap-analysis.json');
-  
-  let jsonFilePath = defaultJsonFile;
-  
-  // Allow custom JSON file path
-  if (flags.jsonFile) {
-    jsonFilePath = path.resolve(flags.jsonFile);
-  }
-
   const updater = new HubSpotCloseDateUpdater();
-  await updater.updateCloseDates(jsonFilePath, dryRun);
+  await updater.updateCloseDates(dryRun);
 }
 
 // Run if called directly

@@ -14,6 +14,7 @@ class FlagParser {
       flushCache: false,
       cacheStats: false,
       focusDeals: false,
+      migrationDealsOnly: false,
       dryRun: false,
       jsonFile: null,
       // Additional cache options
@@ -42,6 +43,9 @@ class FlagParser {
           break;
         case '--focus-deals':
           flags.focusDeals = true;
+          break;
+        case '--migration-deals-only':
+          flags.migrationDealsOnly = true;
           break;
         case '--no-contacts':
           flags.includeContacts = false;
@@ -110,6 +114,7 @@ Options:
   --companies-only    Analyze only companies  
   --deals-only        Analyze only deals
   --focus-deals       Enable comprehensive deals migration analysis
+  --migration-deals-only  Only report deals with migration dates that need updates
   --no-contacts       Skip contacts analysis
   --no-companies      Skip companies analysis
   --no-deals          Skip deals analysis
