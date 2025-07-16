@@ -16,7 +16,8 @@ const config = {
     apiRateLimitDelay: parseInt(process.env.API_RATE_LIMIT_DELAY) || 100,
     batchSize: parseInt(process.env.BATCH_SIZE) || 100,
     logLevel: process.env.LOG_LEVEL || 'info',
-    logFile: process.env.LOG_FILE || 'logs/migration.log'
+    logFile: process.env.LOG_FILE || 'logs/migration.log',
+    cacheTtlMinutes: parseInt(process.env.CACHE_TTL_MINUTES) || 60
   }
 };
 

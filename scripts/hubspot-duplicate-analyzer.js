@@ -1,23 +1,9 @@
-const hubspot = require('@hubspot/api-client');
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const config = require('../config');
+const HubSpotAPI = require('../utils/hubspot-api');
+const CSVReporter = require('../utils/csv-reporter');
+const FlagParser = require('../utils/flag-parser');
 const logger = require('../utils/logger');
-
-const hubspotClient = new hubspot.Client({
-  accessToken: config.hubspot.accessToken
-});
-
-// Create axios instance for direct API calls
-const apiClient = axios.create({
-  baseURL: 'https://api.hubapi.com',
-  headers: {
-    'Authorization': `Bearer ${config.hubspot.accessToken}`,
-    'Content-Type': 'application/json'
-  }
-});
 
 class DuplicateAnalyzer {
   constructor(options = {}) {
@@ -27,6 +13,15 @@ class DuplicateAnalyzer {
       includeDeals: options.includeDeals !== false,
       ...options
     };
+    
+    this.hubspotAPI = new HubSpotAPI({
+      flushCache: options.flushCache,
+      cache: true,
+      cacheTtl: options.cacheTtl,
+      cacheDir: options.cacheDir
+    });
+    this.csvReporter = new CSVReporter();
+    
     this.contacts = [];
     this.companies = [];
     this.deals = [];
@@ -49,140 +44,18 @@ class DuplicateAnalyzer {
   }
 
   async getAllContacts() {
-    logger.info('Fetching all contacts from HubSpot...');
-    let after = undefined;
-    let allContacts = [];
-
-    do {
-      try {
-        const params = {
-          limit: 100,
-          properties: [
-            'email', 'firstname', 'lastname', 'phone', 'company',
-            'createdate', 'lastmodifieddate', 'hs_object_id',
-            'lifecyclestage', 'hubspotscore', 'jobtitle', 'website'
-          ].join(',')
-        };
-        
-        if (after) {
-          params.after = after;
-        }
-
-        const response = await apiClient.get('/crm/v3/objects/contacts', { params });
-        
-        allContacts = allContacts.concat(response.data.results);
-        after = response.data.paging?.next?.after;
-        
-        logger.info(`Fetched ${allContacts.length} contacts so far...`);
-        
-        // Rate limiting
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } catch (error) {
-        logger.error('Error fetching contacts:', error.message);
-        throw error;
-      }
-    } while (after);
-
-    this.contacts = allContacts;
-    logger.info(`Total contacts fetched: ${this.contacts.length}`);
-    return allContacts;
+    this.contacts = await this.hubspotAPI.getAllContacts();
+    return this.contacts;
   }
 
   async getAllCompanies() {
-    logger.info('Fetching all companies from HubSpot...');
-    let after = undefined;
-    let allCompanies = [];
-
-    do {
-      try {
-        const params = {
-          limit: 100,
-          properties: [
-            'name', 'domain', 'website', 'phone', 'city', 'state',
-            'createdate', 'lastmodifieddate', 'hs_object_id',
-            'industry', 'numberofemployees', 'annualrevenue'
-          ].join(',')
-        };
-        
-        if (after) {
-          params.after = after;
-        }
-
-        const response = await apiClient.get('/crm/v3/objects/companies', { params });
-        
-        allCompanies = allCompanies.concat(response.data.results);
-        after = response.data.paging?.next?.after;
-        
-        logger.info(`Fetched ${allCompanies.length} companies so far...`);
-        
-        // Rate limiting
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } catch (error) {
-        logger.error('Error fetching companies:', error.message);
-        // On free tier, companies might not be available
-        if (error.response?.status === 403 || error.response?.status === 402) {
-          logger.warn('Companies API not available (likely free tier limitation)');
-          return [];
-        }
-        throw error;
-      }
-    } while (after);
-
-    this.companies = allCompanies;
-    logger.info(`Total companies fetched: ${this.companies.length}`);
-    return allCompanies;
+    this.companies = await this.hubspotAPI.getAllCompanies();
+    return this.companies;
   }
 
   async getAllDeals() {
-    logger.info('Fetching all deals from HubSpot...');
-    let after = undefined;
-    let allDeals = [];
-
-    do {
-      try {
-        const params = {
-          limit: 100,
-          properties: [
-            'dealname', 'amount', 'dealstage', 'pipeline',
-            'createdate', 'lastmodifieddate', 'hs_object_id',
-            'closedate', 'dealtype', 'hubspot_owner_id'
-          ].join(',')
-        };
-        
-        if (after) {
-          params.after = after;
-        }
-
-        const response = await apiClient.get('/crm/v3/objects/deals', { params });
-        
-        allDeals = allDeals.concat(response.data.results);
-        after = response.data.paging?.next?.after;
-        
-        logger.info(`Fetched ${allDeals.length} deals so far...`);
-        
-        // Rate limiting
-        await this.delay(config.settings.apiRateLimitDelay);
-        
-      } catch (error) {
-        logger.error('Error fetching deals:', error.message);
-        // On free tier, deals might not be available
-        if (error.response?.status === 403 || error.response?.status === 402) {
-          logger.warn('Deals API not available (likely free tier limitation)');
-          return [];
-        }
-        throw error;
-      }
-    } while (after);
-
-    this.deals = allDeals;
-    logger.info(`Total deals fetched: ${this.deals.length}`);
-    return allDeals;
-  }
-
-  async delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    this.deals = await this.hubspotAPI.getAllDeals();
+    return this.deals;
   }
 
   findDuplicatesByEmail() {
@@ -632,278 +505,78 @@ Full details saved to: reports/hubspot-duplicate-report.json
   }
 
   async generateCSVReport() {
-    const csvData = [];
+    // Add HubSpot URLs to all duplicate records
+    this.addHubSpotUrls();
     
-    // Add contact duplicates
-    if (this.options.includeContacts) {
-      // Email duplicates
-      this.duplicates.contacts.byEmail.forEach(duplicate => {
-        duplicate.contacts.forEach((contact, index) => {
-          if (index > 0) { // Skip first as it's the "primary"
-            csvData.push({
-              issue_type: 'Contact Email Duplicate',
-              priority: 'HIGH',
-              object_type: 'Contact',
-              record_id: contact.id,
-              record_name: contact.name,
-              duplicate_value: duplicate.email,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${contact.id}`,
-              primary_record_id: duplicate.contacts[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${duplicate.contacts[0].id}`,
-              action_needed: 'Merge records - same email address'
+    const csvFilename = `hubspot-duplicate-report-${new Date().toISOString().split('T')[0]}.csv`;
+    const recordCount = await this.csvReporter.writeDuplicateReport(this.duplicates, csvFilename);
+    
+    logger.info(`CSV report generated: reports/${csvFilename}`);
+    logger.info(`Total actionable items: ${recordCount}`);
+    
+    return csvFilename;
+  }
+
+  addHubSpotUrls() {
+    // Add HubSpot URLs to all duplicate records
+    Object.entries(this.duplicates).forEach(([objectType, categories]) => {
+      if (categories && typeof categories === 'object') {
+        Object.entries(categories).forEach(([category, items]) => {
+          if (Array.isArray(items)) {
+            items.forEach(item => {
+              if (item) {
+                // Handle different record array keys
+                ['records', 'contacts', 'companies', 'deals'].forEach(key => {
+                  if (Array.isArray(item[key])) {
+                    item[key].forEach(record => {
+                      if (record && record.id) {
+                        record.hubspot_url = this.hubspotAPI.getRecordUrl(objectType, record.id);
+                      }
+                    });
+                  }
+                });
+              }
             });
           }
         });
-      });
-
-      // Phone duplicates  
-      this.duplicates.contacts.byPhone.forEach(duplicate => {
-        duplicate.contacts.forEach((contact, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Contact Phone Duplicate',
-              priority: 'MEDIUM',
-              object_type: 'Contact',
-              record_id: contact.id,
-              record_name: contact.name,
-              duplicate_value: contact.rawPhone,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${contact.id}`,
-              primary_record_id: duplicate.contacts[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${duplicate.contacts[0].id}`,
-              action_needed: 'Review - may be family members or colleagues'
-            });
-          }
-        });
-      });
-
-      // Name duplicates
-      this.duplicates.contacts.byName.forEach(duplicate => {
-        duplicate.contacts.forEach((contact, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Contact Name Duplicate',
-              priority: 'LOW',
-              object_type: 'Contact',
-              record_id: contact.id,
-              record_name: contact.name,
-              duplicate_value: duplicate.name,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${contact.id}`,
-              primary_record_id: duplicate.contacts[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${duplicate.contacts[0].id}`,
-              action_needed: 'Cross-reference with email/phone/company before merging'
-            });
-          }
-        });
-      });
-
-      // Company + Name duplicates
-      this.duplicates.contacts.byCompany.forEach(duplicate => {
-        duplicate.contacts.forEach((contact, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Contact Company+Name Duplicate',
-              priority: 'MEDIUM',
-              object_type: 'Contact',
-              record_id: contact.id,
-              record_name: contact.name,
-              duplicate_value: `${duplicate.company} | ${duplicate.name}`,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${contact.id}`,
-              primary_record_id: duplicate.contacts[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/contact/${duplicate.contacts[0].id}`,
-              action_needed: 'High confidence merge - review job titles for accuracy'
-            });
-          }
-        });
-      });
-    }
-
-    // Add company duplicates
-    if (this.options.includeCompanies) {
-      // Company name duplicates
-      this.duplicates.companies.byName.forEach(duplicate => {
-        duplicate.companies.forEach((company, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Company Name Duplicate',
-              priority: 'MEDIUM',
-              object_type: 'Company',
-              record_id: company.id,
-              record_name: company.name,
-              duplicate_value: duplicate.name,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/company/${company.id}`,
-              primary_record_id: duplicate.companies[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/company/${duplicate.companies[0].id}`,
-              action_needed: 'Review for variations (Inc, LLC, Corp, etc.)'
-            });
-          }
-        });
-      });
-
-      // Company domain duplicates
-      this.duplicates.companies.byDomain.forEach(duplicate => {
-        duplicate.companies.forEach((company, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Company Domain Duplicate',
-              priority: 'HIGH',
-              object_type: 'Company',
-              record_id: company.id,
-              record_name: company.name,
-              duplicate_value: duplicate.domain,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/company/${company.id}`,
-              primary_record_id: duplicate.companies[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/company/${duplicate.companies[0].id}`,
-              action_needed: 'Merge immediately - same domain = same company'
-            });
-          }
-        });
-      });
-    }
-
-    // Add deal duplicates
-    if (this.options.includeDeals) {
-      // Deal name duplicates
-      this.duplicates.deals.byName.forEach(duplicate => {
-        duplicate.deals.forEach((deal, index) => {
-          if (index > 0) {
-            csvData.push({
-              issue_type: 'Deal Name Duplicate',
-              priority: 'MEDIUM',
-              object_type: 'Deal',
-              record_id: deal.id,
-              record_name: deal.name,
-              duplicate_value: duplicate.name,
-              hubspot_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/deal/${deal.id}`,
-              primary_record_id: duplicate.deals[0].id,
-              primary_record_url: `https://app.hubspot.com/contacts/${config.hubspot.portalId}/deal/${duplicate.deals[0].id}`,
-              action_needed: 'Review deal stages and amounts - merge if same opportunity'
-            });
-          }
-        });
-      });
-    }
-
-    // Write CSV file
-    if (csvData.length > 0) {
-      const csvPath = path.join(__dirname, '../reports/hubspot-duplicate-issues.csv');
-      const csvWriter = createCsvWriter({
-        path: csvPath,
-        header: [
-          { id: 'issue_type', title: 'Issue Type' },
-          { id: 'priority', title: 'Priority' },
-          { id: 'object_type', title: 'Object Type' },
-          { id: 'record_id', title: 'Record ID' },
-          { id: 'record_name', title: 'Record Name' },
-          { id: 'duplicate_value', title: 'Duplicate Value' },
-          { id: 'hubspot_url', title: 'HubSpot URL' },
-          { id: 'primary_record_id', title: 'Primary Record ID' },
-          { id: 'primary_record_url', title: 'Primary Record URL' },
-          { id: 'action_needed', title: 'Action Needed' }
-        ]
-      });
-
-      await csvWriter.writeRecords(csvData);
-      logger.info(`CSV report saved to ${csvPath}`);
-      console.log(`📊 CSV report saved to ${csvPath}`);
-    } else {
-      logger.info('No duplicates found - no CSV file generated');
-      console.log('📊 No duplicates found - no CSV file generated');
-    }
-
-    return csvData;
+      }
+    });
   }
 }
 
 // Parse command line arguments
-function parseArguments() {
-  const args = process.argv.slice(2);
-  const options = {
-    includeContacts: true,
-    includeCompanies: true,
-    includeDeals: true,
-    help: false
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--contacts-only':
-        options.includeContacts = true;
-        options.includeCompanies = false;
-        options.includeDeals = false;
-        break;
-      case '--companies-only':
-        options.includeContacts = false;
-        options.includeCompanies = true;
-        options.includeDeals = false;
-        break;
-      case '--deals-only':
-        options.includeContacts = false;
-        options.includeCompanies = false;
-        options.includeDeals = true;
-        break;
-      case '--no-contacts':
-        options.includeContacts = false;
-        break;
-      case '--no-companies':
-        options.includeCompanies = false;
-        break;
-      case '--no-deals':
-        options.includeDeals = false;
-        break;
-      case '--help':
-      case '-h':
-        options.help = true;
-        break;
-      default:
-        console.log(`Unknown argument: ${arg}`);
-        options.help = true;
-        break;
-    }
-  }
-
-  return options;
-}
-
-function showHelp() {
-  console.log(`
-HubSpot Duplicate Analyzer
-==========================
-
-Usage: node scripts/hubspot-duplicate-analyzer.js [options]
-
-Options:
-  --contacts-only     Analyze only contacts (skip companies and deals)
-  --companies-only    Analyze only companies (skip contacts and deals)
-  --deals-only        Analyze only deals (skip contacts and companies)
-  --no-contacts       Skip contact analysis
-  --no-companies      Skip company analysis
-  --no-deals          Skip deal analysis
-  --help, -h          Show this help message
-
-Examples:
-  node scripts/hubspot-duplicate-analyzer.js                    # Analyze all objects
-  node scripts/hubspot-duplicate-analyzer.js --contacts-only    # Only contacts
-  node scripts/hubspot-duplicate-analyzer.js --no-deals         # Skip deals
-  
-The script is READ-ONLY and will not modify any data in HubSpot.
-It generates:
-  - JSON report: reports/hubspot-duplicate-report.json
-  - Text summary: reports/hubspot-duplicate-summary.txt
-  - CSV with links: reports/hubspot-duplicate-issues.csv
-`);
-}
-
 // Run the analysis
 async function runAnalysis() {
-  const options = parseArguments();
+  const flagParser = new FlagParser();
+  const options = flagParser.parse();
   
   if (options.help) {
-    showHelp();
+    flagParser.showHelp('scripts/hubspot-duplicate-analyzer.js', 'HubSpot Duplicate Analyzer');
     return;
   }
 
   const analyzer = new DuplicateAnalyzer(options);
+  
+  // Handle cache operations
+  if (options.flushCache) {
+    analyzer.hubspotAPI.clearCache();
+    console.log('🗑️  Cache cleared. Fresh data will be fetched from APIs.');
+  }
+  
+  if (options.cacheStats) {
+    const stats = analyzer.hubspotAPI.getCacheStats();
+    console.log('📊 Cache Statistics:');
+    if (stats.enabled) {
+      Object.entries(stats.objects || {}).forEach(([type, info]) => {
+        console.log(`   ${type}: ${info.count} records (${info.age})`);
+      });
+    } else {
+      console.log('   Cache disabled');
+    }
+    if (!options.flushCache) return;
+  }
+
+  flagParser.logFlags(options);
   
   try {
     logger.info('Starting HubSpot duplicate analysis...');
