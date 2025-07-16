@@ -5,6 +5,12 @@ const config = require('../config');
 const logger = require('./logger');
 
 class ActiveCampaignAPI {
+  // Static mapping for object types
+  static objectMap = {
+    contacts: 'contact',
+    deals: 'deal'
+  };
+
   constructor(options = {}) {
     this.client = axios.create({
       baseURL: config.activecampaign.apiUrl,
@@ -322,12 +328,8 @@ class ActiveCampaignAPI {
 
   // Helper method to get ActiveCampaign record URL
   getRecordUrl(objectType, id) {
-    const objectMap = {
-      contacts: 'contact',
-      deals: 'deal'
-    };
     // ActiveCampaign URLs are different - this is a placeholder
-    return `https://app.activecampaign.com/${objectMap[objectType]}/${id}`;
+    return `https://app.activecampaign.com/${ActiveCampaignAPI.objectMap[objectType]}/${id}`;
   }
 
   // Cache management methods

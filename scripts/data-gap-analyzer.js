@@ -40,16 +40,16 @@ class DataGapAnalyzer {
     this.acDeals = [];
     this.gaps = {
       contacts: {
-        missingInHubspot: [],
+        missingInHubSpot: [],
         missingInActiveCampaign: [],
         fieldMismatches: [],
-        emptyFields: {}
+        emptyFields: []
       },
       companies: {
-        emptyFields: {}
+        emptyFields: []
       },
       deals: {
-        emptyFields: {}
+        emptyFields: []
       }
     };
   }
@@ -110,7 +110,7 @@ class DataGapAnalyzer {
     // Find contacts missing in HubSpot
     acByEmail.forEach((contact, email) => {
       if (!hubspotByEmail.has(email)) {
-        this.gaps.contacts.missingInHubspot.push({
+        this.gaps.contacts.missingInHubSpot.push({
           email: email,
           firstName: contact.firstName,
           lastName: contact.lastName,
@@ -134,7 +134,7 @@ class DataGapAnalyzer {
       }
     });
     
-    logger.info(`Found ${this.gaps.contacts.missingInHubspot.length} contacts missing in HubSpot`);
+    logger.info(`Found ${this.gaps.contacts.missingInHubSpot.length} contacts missing in HubSpot`);
     logger.info(`Found ${this.gaps.contacts.missingInActiveCampaign.length} contacts missing in ActiveCampaign`);
   }
 
@@ -352,7 +352,7 @@ class DataGapAnalyzer {
         activecampaignContacts: this.acContacts.length,
         activecampaignDeals: this.acDeals.length,
         contactGaps: {
-          missingInHubSpot: this.gaps.contacts.missingInHubspot.length,
+          missingInHubSpot: this.gaps.contacts.missingInHubSpot.length,
           missingInActiveCampaign: this.gaps.contacts.missingInActiveCampaign.length,
           fieldMismatches: this.gaps.contacts.fieldMismatches.length
         },
@@ -381,11 +381,11 @@ class DataGapAnalyzer {
   generateRecommendations() {
     const recommendations = [];
     
-    if (this.gaps.contacts.missingInHubspot.length > 0) {
+    if (this.gaps.contacts.missingInHubSpot.length > 0) {
       recommendations.push({
         type: 'missing_contacts',
         priority: 'high',
-        message: `${this.gaps.contacts.missingInHubspot.length} contacts exist in ActiveCampaign but not in HubSpot`,
+        message: `${this.gaps.contacts.missingInHubSpot.length} contacts exist in ActiveCampaign but not in HubSpot`,
         action: 'Consider importing these contacts to HubSpot'
       });
     }
@@ -475,7 +475,7 @@ SUMMARY:
 - ActiveCampaign Deals: ${report.summary.activecampaignDeals.toLocaleString()}
 
 CONTACT GAPS:
-- Missing in HubSpot: ${report.summary.contactGaps.missingInHubspot}
+- Missing in HubSpot: ${report.summary.contactGaps.missingInHubSpot}
 - Missing in ActiveCampaign: ${report.summary.contactGaps.missingInActiveCampaign}
 - Field Mismatches: ${report.summary.contactGaps.fieldMismatches}
 

@@ -5,6 +5,13 @@ const config = require('../config');
 const logger = require('./logger');
 
 class HubSpotAPI {
+  // Static mapping for object types
+  static objectMap = {
+    contacts: 'contact',
+    companies: 'company',
+    deals: 'deal'
+  };
+
   constructor(options = {}) {
     this.client = axios.create({
       baseURL: 'https://api.hubapi.com',
@@ -369,12 +376,7 @@ class HubSpotAPI {
 
   // Helper method to get HubSpot record URL
   getRecordUrl(objectType, id) {
-    const objectMap = {
-      contacts: 'contact',
-      companies: 'company',
-      deals: 'deal'
-    };
-    return `https://app.hubspot.com/${objectMap[objectType]}/${id}`;
+    return `https://app.hubspot.com/${HubSpotAPI.objectMap[objectType]}/${id}`;
   }
 
   // Cache management methods

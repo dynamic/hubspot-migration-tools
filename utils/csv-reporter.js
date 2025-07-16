@@ -105,7 +105,7 @@ class CSVReporter {
     const csvData = [];
     
     // Process missing contacts
-    gaps.contacts.missingInHubspot.forEach(contact => {
+    gaps.contacts.missingInHubSpot.forEach(contact => {
       csvData.push({
         gap_type: 'missing_in_hubspot',
         object_type: 'contact',
@@ -139,25 +139,23 @@ class CSVReporter {
       });
     });
 
-    // Process empty field analysis (it's an array, not an object)
-    if (Array.isArray(gaps.contacts.emptyFields)) {
-      gaps.contacts.emptyFields.forEach(fieldData => {
-        if (fieldData.count > 0) {
-          const priority = fieldData.percentage > 50 ? 'HIGH' : 'MEDIUM';
-          csvData.push({
-            gap_type: 'empty_field',
-            object_type: 'contact',
-            priority,
-            identifier: fieldData.field,
-            details: `${fieldData.count} contacts (${fieldData.percentage}%) missing ${fieldData.field}`,
-            action: `Populate ${fieldData.field} from ActiveCampaign or external sources`
-          });
-        }
-      });
-    }
+    // Process empty field analysis
+    gaps.contacts.emptyFields.forEach(fieldData => {
+      if (fieldData.count > 0) {
+        const priority = fieldData.percentage > 50 ? 'HIGH' : 'MEDIUM';
+        csvData.push({
+          gap_type: 'empty_field',
+          object_type: 'contact',
+          priority,
+          identifier: fieldData.field,
+          details: `${fieldData.count} contacts (${fieldData.percentage}%) missing ${fieldData.field}`,
+          action: `Populate ${fieldData.field} from ActiveCampaign or external sources`
+        });
+      }
+    });
 
     // Process company empty fields
-    if (gaps.companies && Array.isArray(gaps.companies.emptyFields)) {
+    if (gaps.companies && gaps.companies.emptyFields) {
       gaps.companies.emptyFields.forEach(fieldData => {
         if (fieldData.count > 0) {
           const priority = fieldData.percentage > 50 ? 'HIGH' : 'MEDIUM';
@@ -174,7 +172,7 @@ class CSVReporter {
     }
 
     // Process deal empty fields
-    if (gaps.deals && Array.isArray(gaps.deals.emptyFields)) {
+    if (gaps.deals && gaps.deals.emptyFields) {
       gaps.deals.emptyFields.forEach(fieldData => {
         if (fieldData.count > 0) {
           const priority = fieldData.percentage > 50 ? 'HIGH' : 'MEDIUM';
