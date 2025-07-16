@@ -456,6 +456,35 @@ class HubSpotAPI {
       logger.warn('Failed to clear cache:', error.message);
     }
   }
+
+  async getDeal(dealId) {
+    try {
+      const response = await this.client.get(`/crm/v3/objects/deals/${dealId}`, {
+        params: {
+          properties: [
+            'dealname', 'amount', 'dealstage', 'pipeline',
+            'createdate', 'lastmodifieddate', 'closedate', 'dealtype'
+          ]
+        }
+      });
+      return response.data;
+    } catch (error) {
+      logger.error(`Error fetching deal ${dealId}:`, error.message);
+      return null;
+    }
+  }
+
+  async updateDeal(dealId, properties) {
+    try {
+      const response = await this.client.patch(`/crm/v3/objects/deals/${dealId}`, {
+        properties: properties
+      });
+      return response.data;
+    } catch (error) {
+      logger.error(`Error updating deal ${dealId}:`, error.message);
+      return null;
+    }
+  }
 }
 
 module.exports = HubSpotAPI;

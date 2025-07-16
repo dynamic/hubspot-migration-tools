@@ -13,6 +13,10 @@ class FlagParser {
       help: false,
       flushCache: false,
       cacheStats: false,
+      focusDeals: false,
+      migrationDealsOnly: false,
+      dryRun: false,
+      jsonFile: null,
       // Additional cache options
       cache: true,
       cacheTtl: 60,
@@ -36,6 +40,12 @@ class FlagParser {
           flags.includeContacts = false;
           flags.includeCompanies = false;
           flags.includeDeals = true;
+          break;
+        case '--focus-deals':
+          flags.focusDeals = true;
+          break;
+        case '--migration-deals-only':
+          flags.migrationDealsOnly = true;
           break;
         case '--no-contacts':
           flags.includeContacts = false;
@@ -70,6 +80,15 @@ class FlagParser {
             i++; // Skip next argument
           }
           break;
+        case '--dry-run':
+          flags.dryRun = true;
+          break;
+        case '--json-file':
+          if (i + 1 < this.args.length) {
+            flags.jsonFile = this.args[i + 1];
+            i++; // Skip next argument
+          }
+          break;
         case '--help':
         case '-h':
           flags.help = true;
@@ -94,6 +113,8 @@ Options:
   --contacts-only     Analyze only contacts
   --companies-only    Analyze only companies  
   --deals-only        Analyze only deals
+  --focus-deals       Enable comprehensive deals migration analysis
+  --migration-deals-only  Only report deals with migration dates that need updates
   --no-contacts       Skip contacts analysis
   --no-companies      Skip companies analysis
   --no-deals          Skip deals analysis
@@ -102,6 +123,8 @@ Options:
   --no-cache          Disable caching entirely
   --cache-ttl <mins>  Cache TTL in minutes (default: 60)
   --cache-dir <path>  Cache directory path (default: ./cache)
+  --dry-run           Show what would be updated without making changes
+  --json-file <path>  Use custom JSON file for data analysis
   --help, -h          Show this help message
 
 Performance Options:
@@ -115,6 +138,7 @@ Examples:
   node ${scriptName} --contacts-only    # Analyze only contacts
   node ${scriptName} --flush-cache      # Clear cache and fetch fresh data
   node ${scriptName} --cache-stats      # Show cache usage statistics
+  node ${scriptName} --dry-run          # Show what would be updated (update scripts)
 `);
   }
 
@@ -122,7 +146,9 @@ Examples:
     logger.info('Analysis flags:', {
       contacts: flags.includeContacts,
       companies: flags.includeCompanies,
-      deals: flags.includeDeals
+      deals: flags.includeDeals,
+      focusDeals: flags.focusDeals,
+      migrationDealsOnly: flags.migrationDealsOnly
     });
   }
 }
