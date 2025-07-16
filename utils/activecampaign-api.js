@@ -413,6 +413,80 @@ class ActiveCampaignAPI {
       logger.warn('Failed to clear ActiveCampaign cache:', error.message);
     }
   }
+
+  async getDealCustomFields() {
+    try {
+      const response = await this.client.get('/api/3/dealCustomFieldMeta');
+      return response.data.dealCustomFieldMeta;
+    } catch (error) {
+      logger.error('Error fetching deal custom fields:', error.message);
+      return [];
+    }
+  }
+
+  async getDealsWithCustomFields() {
+    const objectType = 'deals-with-custom-fields';
+    
+    // Try cache first
+    const cachedData = this.loadFromCache(objectType);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    // Fetch from API
+    logger.info('🌐 Fetching deals with custom fields from ActiveCampaign API...');
+    let allDeals = [];
+    let allCustomFieldData = [];
+    let offset = 0;
+    const limit = config.settings.batchSize;
+
+    try {
+      do {
+        const response = await this.client.get('/api/3/deals', {
+          params: {
+            limit,
+            offset,
+            'include': 'dealCustomFieldData'
+          }
+        });
+        
+        const deals = response.data.deals;
+        const customFieldData = response.data.dealCustomFieldData || [];
+        
+        allDeals = allDeals.concat(deals);
+        allCustomFieldData = allCustomFieldData.concat(customFieldData);
+        
+        logger.info(`📥 Fetched ${allDeals.length} ActiveCampaign deals with custom fields so far...`);
+        
+        if (deals.length < limit) {
+          break;
+        }
+        
+        offset += limit;
+        await this.delay(config.settings.apiRateLimitDelay);
+        
+      } while (true);
+      
+    } catch (error) {
+      logger.error('Error fetching ActiveCampaign deals with custom fields:', error.message);
+      if (error.code === 'ECONNABORTED') {
+        logger.warn('Request timed out - you may need to increase the timeout setting');
+      }
+      throw error;
+    }
+    
+    // Combine the data
+    const combinedData = {
+      deals: allDeals,
+      dealCustomFieldData: allCustomFieldData
+    };
+    
+    // Save to cache
+    this.saveToCache(objectType, combinedData);
+    
+    logger.info(`✅ Loaded ${allDeals.length} ActiveCampaign deals with custom fields`);
+    return combinedData;
+  }
 }
 
 module.exports = ActiveCampaignAPI;
