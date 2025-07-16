@@ -15,7 +15,7 @@ class DuplicateAnalyzer {
     };
     
     this.hubspotAPI = new HubSpotAPI({
-      forceRefresh: options.flushCache,
+      flushCache: options.flushCache,
       cache: true
     });
     this.csvReporter = new CSVReporter();
@@ -559,9 +559,13 @@ async function runAnalysis() {
   if (options.cacheStats) {
     const stats = analyzer.hubspotAPI.getCacheStats();
     console.log('📊 Cache Statistics:');
-    console.log(`   Memory cache entries: ${stats.memoryCache}`);
-    console.log(`   Disk cache files: ${stats.diskCache}`);
-    console.log(`   Total cache size: ${stats.totalSizeMB} MB`);
+    if (stats.enabled) {
+      Object.entries(stats.objects || {}).forEach(([type, info]) => {
+        console.log(`   ${type}: ${info.count} records (${info.age})`);
+      });
+    } else {
+      console.log('   Cache disabled');
+    }
     if (!options.flushCache) return;
   }
 

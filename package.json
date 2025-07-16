@@ -1,7 +1,7 @@
 {
   "name": "hubspot-migration-tools",
   "version": "1.0.0",
-  "description": "Tools for migrating and analyzing HubSpot data from ActiveCampaign",
+  "description": "Comprehensive toolkit for analyzing HubSpot data quality, detecting duplicates, and comparing data with ActiveCampaign",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
