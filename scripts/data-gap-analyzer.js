@@ -782,6 +782,10 @@ Full details saved to: reports/data-gap-analysis.json
     const hsStatus = this.getHubSpotDealStatus(hsDeal.properties.dealstage);
     const acStatus = this.getACDealStatus(acDeal.status);
     
+    // Migration date check - deals with this date need to be updated
+    const MIGRATION_DATE = '2025-07-15';
+    const isMigrationDate = hsCloseDate && new Date(hsCloseDate).toISOString().split('T')[0] === MIGRATION_DATE;
+    
     // Only analyze close dates for won/lost deals
     if (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost') {
       
@@ -794,13 +798,29 @@ Full details saved to: reports/data-gap-analysis.json
           correctCloseDate: acCloseDate,
           issueType: 'missing_close_date_in_hubspot',
           priority: 'HIGH',
+          isMigrationDate: false,
           concern: 'HubSpot missing close date - should use ActiveCampaign date',
           recommendation: `Set HubSpot close date to ${new Date(acCloseDate).toLocaleDateString()}`
         });
       }
       
-      // Case 2: Both have close dates but they differ
-      else if (hsCloseDate && acCloseDate) {
+      // Case 2: HubSpot has migration date - needs to be updated to AC date
+      else if (isMigrationDate && acCloseDate) {
+        this.gaps.deals.dateMismatches.push({
+          ...comparison,
+          hubspotCloseDate: hsCloseDate,
+          activeCampaignCloseDate: acCloseDate,
+          correctCloseDate: acCloseDate,
+          issueType: 'migration_date_needs_update',
+          priority: 'HIGH',
+          isMigrationDate: true,
+          concern: 'HubSpot has migration date (7/15/2025) - should use ActiveCampaign date',
+          recommendation: `Update HubSpot close date from migration date to ${new Date(acCloseDate).toLocaleDateString()}`
+        });
+      }
+      
+      // Case 3: Both have close dates but they differ (and not migration date)
+      else if (hsCloseDate && acCloseDate && !isMigrationDate) {
         const hsDate = new Date(hsCloseDate);
         const acDate = new Date(acCloseDate);
         
@@ -816,14 +836,15 @@ Full details saved to: reports/data-gap-analysis.json
             daysDifference: daysDifference,
             issueType: 'close_date_mismatch',
             priority: 'HIGH',
+            isMigrationDate: false,
             concern: `Close dates differ by ${Math.abs(daysDifference)} days - should use ActiveCampaign date`,
             recommendation: `Update HubSpot close date from ${hsDate.toLocaleDateString()} to ${acDate.toLocaleDateString()}`
           });
         }
       }
       
-      // Case 3: HubSpot has close date but AC doesn't (unusual but possible)
-      else if (hsCloseDate && !acCloseDate) {
+      // Case 4: HubSpot has close date but AC doesn't (unusual but possible)
+      else if (hsCloseDate && !acCloseDate && !isMigrationDate) {
         this.gaps.deals.dateMismatches.push({
           ...comparison,
           hubspotCloseDate: hsCloseDate,
@@ -831,12 +852,13 @@ Full details saved to: reports/data-gap-analysis.json
           correctCloseDate: hsCloseDate,
           issueType: 'missing_close_date_in_ac',
           priority: 'MEDIUM',
+          isMigrationDate: false,
           concern: 'ActiveCampaign missing close date - HubSpot has it',
           recommendation: `Review: HubSpot has close date ${new Date(hsCloseDate).toLocaleDateString()} but AC doesn't`
         });
       }
       
-      // Case 4: Neither has close date but deal is won/lost (major issue)
+      // Case 5: Neither has close date but deal is won/lost (major issue)
       else if (!hsCloseDate && !acCloseDate && (hsStatus === 'won' || hsStatus === 'lost' || acStatus === 'won' || acStatus === 'lost')) {
         this.gaps.deals.dateMismatches.push({
           ...comparison,
@@ -845,6 +867,7 @@ Full details saved to: reports/data-gap-analysis.json
           correctCloseDate: null,
           issueType: 'both_missing_close_date',
           priority: 'HIGH',
+          isMigrationDate: false,
           concern: 'Won/Lost deal missing close date in both platforms',
           recommendation: 'Manual review required - determine actual close date'
         });

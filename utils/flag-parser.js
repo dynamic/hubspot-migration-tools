@@ -14,6 +14,8 @@ class FlagParser {
       flushCache: false,
       cacheStats: false,
       focusDeals: false,
+      dryRun: false,
+      jsonFile: null,
       // Additional cache options
       cache: true,
       cacheTtl: 60,
@@ -74,6 +76,15 @@ class FlagParser {
             i++; // Skip next argument
           }
           break;
+        case '--dry-run':
+          flags.dryRun = true;
+          break;
+        case '--json-file':
+          if (i + 1 < this.args.length) {
+            flags.jsonFile = this.args[i + 1];
+            i++; // Skip next argument
+          }
+          break;
         case '--help':
         case '-h':
           flags.help = true;
@@ -107,6 +118,8 @@ Options:
   --no-cache          Disable caching entirely
   --cache-ttl <mins>  Cache TTL in minutes (default: 60)
   --cache-dir <path>  Cache directory path (default: ./cache)
+  --dry-run           Show what would be updated without making changes
+  --json-file <path>  Use custom JSON file for data analysis
   --help, -h          Show this help message
 
 Performance Options:
@@ -120,6 +133,7 @@ Examples:
   node ${scriptName} --contacts-only    # Analyze only contacts
   node ${scriptName} --flush-cache      # Clear cache and fetch fresh data
   node ${scriptName} --cache-stats      # Show cache usage statistics
+  node ${scriptName} --dry-run          # Show what would be updated (update scripts)
 `);
   }
 

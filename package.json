@@ -17,6 +17,8 @@
     "gap-analysis:deals": "node scripts/data-gap-analyzer.js --focus-deals",
     "gap-analysis:fresh": "node scripts/data-gap-analyzer.js --flush-cache",
     "gap-analysis:stats": "node scripts/data-gap-analyzer.js --cache-stats",
+    "update-close-dates": "node scripts/update-hubspot-close-dates.js",
+    "update-close-dates:dry-run": "node scripts/update-hubspot-close-dates.js --dry-run",
     "cache:stats": "node scripts/hubspot-duplicate-analyzer.js --cache-stats",
     "cache:clear": "node scripts/hubspot-duplicate-analyzer.js --flush-cache --cache-stats",
     "test": "jest",
